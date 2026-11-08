@@ -1,0 +1,1 @@
+Trigger extraction and publication of the R8.0.4 ZIP already uploaded to the repository root. This file can be removed after the workflow completes.
