@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -22,6 +23,43 @@ func (w Workspace) terminalResultForJob(jobID string) (Result, bool) {
 		}
 	}
 	return Result{}, false
+}
+
+// recoverWarningPreviewArtifact accepts success only when the worker wrote a
+// plan that carries this exact job ID and matches the saved project snapshot.
+// This is not inferred from a PID or a generic progress message.
+func (w Workspace) recoverWarningPreviewArtifact(lease Task) (Result, bool, error) {
+	if lease.Phase != "warning_refine_preview" || lease.JobID == "" {
+		return Result{}, false, nil
+	}
+	b, err := os.ReadFile(w.path("warning_refinement_plan.json"))
+	if err != nil {
+		return Result{}, false, nil
+	}
+	var plan WarningPlan
+	if err := json.Unmarshal(b, &plan); err != nil {
+		return Result{}, false, nil
+	}
+	if plan.JobID != lease.JobID || plan.Project != lease.ExpectedProject || plan.Fingerprint != lease.Fingerprint || plan.PlanID == "" {
+		return Result{}, false, nil
+	}
+	snapshot, err := w.LoadSnapshot()
+	if err != nil || snapshot.Project != lease.ExpectedProject || snapshot.Fingerprint != lease.Fingerprint {
+		return Result{}, false, nil
+	}
+	if err := validateWarningDiagnostic(plan, &snapshot, plan.PlanID); err != nil {
+		return Result{}, false, err
+	}
+	summary, err := json.Marshal(plan)
+	if err != nil {
+		return Result{}, false, err
+	}
+	result := Result{JobID: lease.JobID, Phase: lease.Phase, Status: "ok", Summary: summary}
+	if err := w.RecordWarningPreview(result, &snapshot); err != nil {
+		return Result{}, false, err
+	}
+	result.Stage = "recovered_from_job_bound_warning_plan"
+	return result, true, nil
 }
 
 // recoverTerminalProgress only accepts the terminal marker emitted by the
@@ -46,20 +84,42 @@ func (w Workspace) recoverTerminalProgress(lease Task) (Result, bool, error) {
 		return Result{}, false, nil
 	}
 	status := ""
+	detail := strings.TrimSpace(progress.Detail)
 	switch progress.Stage {
 	case "任务失败":
 		status = "error"
 	case "已安全取消":
 		status = "cancelled"
+	case "终态结果全部写入失败", "部分回执写入失败":
+		// The worker emits these stages only AFTER its requested ACT operation
+		// has returned and terminal-receipt writes have been attempted. A preview
+		// may be recovered as OK only if its own plan artifact proves the exact job.
+		status = "error"
+		if detail == "" {
+			detail = "ACT 已进入终态回执写入阶段，但任务结果 JSON 不可用；操作是否成功仍需核查工程状态和方案文件。"
+		} else {
+			detail = "ACT 已进入终态回执写入阶段；不能据此推断操作成功或失败。回执写入诊断：" + detail
+		}
 	default:
 		return Result{}, false, nil
 	}
-	detail := strings.TrimSpace(progress.Detail)
-	if detail == "" {
+	var recoveredSummary json.RawMessage
+	if (progress.Stage == "终态结果全部写入失败" || progress.Stage == "部分回执写入失败") && lease.Phase == "warning_refine_preview" {
+		if recovered, ok, recoveryErr := w.recoverWarningPreviewArtifact(lease); recoveryErr == nil && ok {
+			status = "ok"
+			detail = ""
+			recoveredSummary = recovered.Summary
+		}
+	}
+	if detail == "" && status != "ok" {
 		detail = "Meshing ACT signaled a terminal failure/cancellation without its final JSON receipt"
 	}
+	recoveredStage := "recovered_from_ACT_terminal_marker"
+	if status == "ok" && len(recoveredSummary) > 0 {
+		recoveredStage = "recovered_from_job_bound_warning_plan"
+	}
 	r := Result{JobID: lease.JobID, Phase: lease.Phase, Status: status,
-		Stage: "recovered_from_ACT_terminal_marker", Error: detail}
+		Stage: recoveredStage, Summary: recoveredSummary, Error: detail}
 	// Only repair the AutoMesh workspace. This does not send commands to
 	// Workbench, change controls, clear a mesh, or inspect/terminate a process.
 	// Preserve the old last result before replacing it, when needed.
@@ -75,8 +135,8 @@ func (w Workspace) recoverTerminalProgress(lease Task) (Result, bool, error) {
 	if e := writeJSON(w.path("job_"+lease.JobID+".json"), r); e != nil {
 		return Result{}, false, fmt.Errorf("cannot repair terminal ACT receipt: %w", e)
 	}
-	if e := writeJSON(w.path("last_result.json"), r); e != nil {
-		return Result{}, false, fmt.Errorf("per-job result recovered, generic result write failed: %w", e)
-	}
+	// The immutable per-job receipt is authoritative. A generic last_result
+	// replacement failure must not keep the completed task locked forever.
+	_ = writeJSON(w.path("last_result.json"), r)
 	return r, true, nil
 }

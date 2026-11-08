@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -115,8 +116,14 @@ func (a *state) populateCandidateList() {
 			quality = fmt.Sprintf("%.5f", *c.SkewMax)
 		}
 		state := "待人工审核"
-		if a.reviewPublished[c.ID] {
+		if a.reviewPublishBlockedReason != "" {
+			state = "历史待核对·不可发布"
+		} else if a.reviewPublished[c.ID] {
 			state = "已发布·不可重复"
+		} else if near, overlap := a.existingSphereRelation(c); near {
+			state = "与历史 Sizing 近重合·不可发布"
+		} else if overlap {
+			state = "与历史 Sizing 相交·需复核"
 		}
 		values := []string{fmt.Sprintf("#%03d", i+1), quality,
 			strconv.Itoa(len(c.ElementIDs)), strconv.Itoa(c.BodyID),
@@ -159,6 +166,43 @@ func (a *state) selectedCandidates() ([]string, int) {
 	}
 	return ids, budget
 }
+func (a *state) existingSphereRelation(candidate WarningHotspot) (nearDuplicate, overlaps bool) {
+	for _, old := range a.reviewExistingControls {
+		if old.BodyID != candidate.BodyID {
+			continue
+		}
+		other := WarningHotspot{BodyID: old.BodyID, CentreMM: old.CentreMM, RadiusMM: old.RadiusMM}
+		distance := candidateCentersDistance(candidate, other)
+		if distance < 0.25*math.Min(candidate.RadiusMM, old.RadiusMM) {
+			nearDuplicate = true
+		}
+		if distance < candidate.RadiusMM+old.RadiusMM {
+			overlaps = true
+		}
+	}
+	return nearDuplicate, overlaps
+}
+
+func (a *state) selectedExistingSphereOverlap(ids []string) (overlapCount int, nearDuplicate bool) {
+	selected := map[string]bool{}
+	for _, id := range ids {
+		selected[id] = true
+	}
+	for _, candidate := range a.reviewPlan.Clusters {
+		if !selected[candidate.ID] {
+			continue
+		}
+		near, overlap := a.existingSphereRelation(candidate)
+		if near {
+			nearDuplicate = true
+		}
+		if overlap {
+			overlapCount++
+		}
+	}
+	return overlapCount, nearDuplicate
+}
+
 func (a *state) reviewSelectionSummary() {
 	if a.page != 5 || a.reviewPopulating {
 		return
@@ -167,8 +211,11 @@ func (a *state) reviewSelectionSummary() {
 	// Report overlaps conservatively; ordinary intersections need manual
 	// confirmation, near-duplicates are rejected before ACT mutation.
 	overlapCount, overlapErr := reviewedSphereOverlap(a.reviewPlan, ids, a.reviewPublished)
+	existingOverlapCount, existingNearDuplicate := a.selectedExistingSphereOverlap(ids)
 	a.reviewOverlapCount = overlapCount
-	a.reviewOverlapError = overlapErr != nil
+	a.reviewExistingOverlapCount = existingOverlapCount
+	a.reviewExistingNearDuplicate = existingNearDuplicate
+	a.reviewOverlapError = overlapErr != nil || existingNearDuplicate
 	signature := strings.Join(ids, "|")
 	if signature != a.reviewSelectedSignature {
 		send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
@@ -176,7 +223,7 @@ func (a *state) reviewSelectionSummary() {
 	}
 	a.reviewSelectedCount = len(ids)
 	a.reviewSelectedBudget = budget
-	enabled(a.ctl("reviewconfirm"), !a.busy && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
+	enabled(a.ctl("reviewconfirm"), !a.busy && a.reviewPublishBlockedReason == "" && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
 	refresh()
 }
 func (a *state) openCandidateReview() {
@@ -203,28 +250,50 @@ func (a *state) openCandidateReview() {
 		alert("原生候选列表控件初始化失败，禁止在没有勾选界面的情况下发布 Sizing。")
 		return
 	}
-	published, budget, err := a.ws.warningOwnedCandidates(a.snapshot)
-	if err != nil {
-		alert("无法读取已有 Sizing 发布记录：" + err.Error())
-		return
+	published, budget, ledgerErr := a.ws.warningOwnedCandidates(a.snapshot)
+	existingControls, controlsKnown, controlsErr := snapshotWarningControls(a.snapshot)
+	publishBlockedReason := ""
+	if controlsErr != nil {
+		publishBlockedReason = controlsErr.Error()
+	} else if !controlsKnown {
+		publishBlockedReason = "当前只读扫描未提供完整的现有 Sizing 清单，无法核验历史资源预算。请重新只读扫描。"
 	}
-	// Old R7.9 ledger lacked candidate IDs. Recognize exact, verified plan
-	// geometry matches as *tentatively published*, not as permission to write.
-	if err := a.ws.reconcileReviewLegacyPublished(a.snapshot, plan, published); err != nil {
-		alert(err.Error())
-		return
+	if ledgerErr != nil {
+		// A stale or unreadable ledger must not hide a valid read-only proposal.
+		// Keep the candidate list available, but fail closed for all publication.
+		if publishBlockedReason == "" {
+			publishBlockedReason = ledgerErr.Error()
+		}
+		published = map[string]bool{}
+		budget = 0
+	} else if publishBlockedReason == "" {
+		if err := a.ws.reconcileReviewLegacyPublished(a.snapshot, plan, published); err != nil {
+			publishBlockedReason = err.Error()
+		}
 	}
 	a.reviewPlan = plan
+	a.reviewExistingControls = existingControls
+	a.reviewExistingControlCount = len(existingControls)
+	a.reviewPublishBlockedReason = publishBlockedReason
 	a.reviewDetailsOpened = false
 	a.reviewSelectedSignature = ""
+	a.reviewExistingOverlapCount = 0
+	a.reviewExistingNearDuplicate = false
 	send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
 	a.reviewPublished = published
 	a.reviewExistingBudget = budget
 	a.switchPage(5)
 	a.populateCandidateList()
 	a.reviewSelectionSummary()
+	if a.reviewPublishBlockedReason != "" {
+		alert("当前局部方案已生成，可以继续查看全部影响域和候选数据。\n\n但旧版 Sizing 发布记录无法与当前工程安全对应，因此本次进入只读审核模式，发布按钮已锁定；不会删除、覆盖或停用任何现有 Sizing。\n\n原因：" + a.reviewPublishBlockedReason)
+	}
 }
 func (a *state) confirmCandidateReview() {
+	if a.reviewPublishBlockedReason != "" {
+		alert("当前仅允许查看局部方案，不能发布 Sizing。\n\n" + a.reviewPublishBlockedReason)
+		return
+	}
 	if a.busy {
 		alert("任务执行中，不能再次发布")
 		return
@@ -236,6 +305,10 @@ func (a *state) confirmCandidateReview() {
 	}
 	if len(ids) == 0 {
 		alert("请勾选至少一个未发布的候选区域")
+		return
+	}
+	if a.reviewExistingNearDuplicate {
+		alert("所选候选与当前已有 Sizing 的球形影响域近乎重合，已禁止重复发布。请取消这些候选；其他不重合候选仍可单独发布。")
 		return
 	}
 	if _, err := reviewedSphereOverlap(a.reviewPlan, ids, a.reviewPublished); err != nil {
@@ -282,13 +355,26 @@ func (a *state) drawCandidateReview(dc uintptr, x, cw int) {
 	}
 	textAt(dc, qualityNote, x+16, 134, cw-32, 27, 13, 450, slate)
 	solid(dc, x, 184, cw, 516, white, 18)
-	existing := len(a.reviewPublished)
-	textAt(dc, fmt.Sprintf("候选 %d 处  ·  历史已发布 %d 处  ·  本次勾选 %d 处",
-		len(a.reviewPlan.Clusters), existing, a.reviewSelectedCount), x+30, 193, cw-60, 29, 17, 700, navy)
-	textAt(dc, fmt.Sprintf("资源代理：本次加已有约 %d / 120000（不是实际新增单元数）", a.reviewSelectedBudget), x+30, 226, cw-60, 24, 12, 450, slate)
-	overlapNote := "逐项核查片间净空、几何作用域；默认不勾选任何候选。"
-	if a.reviewOverlapError {
-		overlapNote = "所选或已发布候选存在几乎重合的影响球，已禁止发布。"
+	existing := a.reviewExistingControlCount
+	historyLabel := fmt.Sprintf("当前模型已有历史 Sizing %d 处（已读取）", existing)
+	if a.reviewPublishBlockedReason != "" {
+		historyLabel = "历史发布状态：待人工核对"
+	}
+	textAt(dc, fmt.Sprintf("候选 %d 处  ·  %s  ·  本次勾选 %d 处",
+		len(a.reviewPlan.Clusters), historyLabel, a.reviewSelectedCount), x+30, 193, cw-60, 29, 17, 700, navy)
+	if a.reviewPublishBlockedReason != "" {
+		textAt(dc, "资源预算：旧控件清单未核验，不计算累计值；发布已锁定。", x+30, 226, cw-60, 24, 12, 600, color(180, 75, 45))
+		textAt(dc, "只读模式：历史 Sizing 清单未能安全匹配当前模型；可查看候选，不可发布。", x+30, 250, cw-60, 18, 11, 650, color(180, 75, 45))
+	} else {
+		textAt(dc, fmt.Sprintf("资源代理：本次加已有约 %d / 120000（不是实际新增单元数）", a.reviewSelectedBudget), x+30, 226, cw-60, 24, 12, 450, slate)
+	}
+	overlapNote := "逐项核查片间净空、几何作用域；默认不勾选任何候选。历史 Sizing 保留并计入累计预算。"
+	if a.reviewExistingNearDuplicate {
+		overlapNote = "所选候选与历史 Sizing 近乎重合，禁止重复发布；请取消对应候选。"
+	} else if a.reviewExistingOverlapCount > 0 {
+		overlapNote = fmt.Sprintf("所选候选与已有 Sizing 影响域相交 %d 处；请查看详情并人工核查。", a.reviewExistingOverlapCount)
+	} else if a.reviewOverlapError {
+		overlapNote = "所选候选之间存在几乎重合的影响球，已禁止发布。"
 	} else if a.reviewOverlapCount > 0 {
 		overlapNote = fmt.Sprintf("所选影响球存在 %d 对空间相交；请在详情中人工核查。", a.reviewOverlapCount)
 	}

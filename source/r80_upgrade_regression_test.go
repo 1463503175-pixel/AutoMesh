@@ -15,3 +15,26 @@ func TestR80AcceptsExactR79ReleaseScriptsOnly(t *testing.T) {
 		t.Fatal("unknown user scripts must not be silently overwritten")
 	}
 }
+
+func TestR802AcceptsExactR801AssetsForInPlaceUpgrade(t *testing.T) {
+	const r801Worker = "5a9f10af7ad53b9ff168f52151375bfd87a456ec3c09b2627eb37dde745153c7"
+	const r801Warning = "eaebbad9c9dac0b1a9e18d755ef19d0b236cfe8b8db444e4b46e2b62ffd6139a"
+	if !knownLegacyWorkerHashes[r801Worker] {
+		t.Fatal("exact R8.0.1 worker would be blocked during R8.0.2 upgrade")
+	}
+	if !knownLegacyAssetHashes["warning_refinement.py"][r801Warning] {
+		t.Fatal("exact R8.0.1 warning module would be blocked during R8.0.2 upgrade")
+	}
+	if err := checkGeneratedAssetReplacement("meshing_worker.py", []byte("unrecognized user edit"), []byte("R8.0.2 worker")); err == nil {
+		t.Fatal("unknown user-edited worker must remain protected")
+	}
+}
+
+func TestR804AllowsExactR803AssetsForInPlaceUpgrade(t *testing.T) {
+	if !knownLegacyWorkerHashes["c6bbc68afb28ac07add565021498544c29a4bcc4928d6bc8527f9bc866a991d6"] {
+		t.Fatal("exact R8.0.3 worker would be blocked during R8.0.4 upgrade")
+	}
+	if !knownLegacyAssetHashes["warning_refinement.py"]["899fbef06a7285b03168ef935fde9394ce9c2d605180baa8920d59b9641711fd"] {
+		t.Fatal("exact R8.0.3 warning module would be blocked during R8.0.4 upgrade")
+	}
+}

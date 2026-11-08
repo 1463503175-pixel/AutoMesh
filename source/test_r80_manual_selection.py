@@ -6,7 +6,7 @@ import json
 import pathlib
 import tempfile
 import unittest
-from test_warning_refinement_v52 import Fixture, MockNode, MockElement
+from test_warning_refinement_v52 import Fixture, MockNode, MockElement, MockSizing
 
 
 def prepare_candidates(f, folder, count=200):
@@ -120,6 +120,55 @@ class ManualSelectionTests(unittest.TestCase):
             self.assertEqual(len(f.model.Mesh.Children),13)
             self.assertEqual(f.model.Mesh.count,0)
 
+
+class CrossProjectManifestTests(unittest.TestCase):
+    def test_preview_ignores_stale_manifest_when_no_managed_controls_are_live(self):
+        with tempfile.TemporaryDirectory() as d:
+            f=Fixture();snap=f.marked(d)
+            pathlib.Path(d,'warning_refinement_managed.json').write_text(json.dumps({
+                'schema_version':2,'project':'E:/ALD/Previous','fingerprint':'old-geometry',
+                'controls':[{'name':'AutoMesh_QR_old','object_id':777,'body_id':1,
+                             'coordinate_system':'AutoMesh_QR_CS_old','cs_object_id':888,
+                             'size_mm':1.0,'radius_mm':3.0,'centre_mm':[0,0,0]}]
+            }))
+            result=f.run(d,'warning_refine_preview',30,snap)
+            self.assertEqual(result['status'],'ok',result.get('error'))
+            self.assertGreaterEqual(result['summary']['group_count'],1)
+            self.assertFalse(f.model.Mesh.Children)
+
+    def test_preview_refuses_stale_manifest_if_reserved_qr_control_is_live(self):
+        with tempfile.TemporaryDirectory() as d:
+            f=Fixture();snap=f.marked(d)
+            live=MockSizing(f.model.Mesh,99);live.Name='AutoMesh_QR_old'
+            f.model.Mesh.Children.append(live)
+            pathlib.Path(d,'warning_refinement_managed.json').write_text(json.dumps({
+                'schema_version':2,'project':'E:/ALD/Previous','fingerprint':'old-geometry',
+                'controls':[{'name':'AutoMesh_QR_old','object_id':777,'body_id':1,
+                             'coordinate_system':'AutoMesh_QR_CS_old','cs_object_id':888,
+                             'size_mm':1.0,'radius_mm':3.0,'centre_mm':[0,0,0]}]
+            }))
+            result=f.run(d,'warning_refine_preview',31,snap)
+            self.assertEqual(result['status'],'error')
+            self.assertTrue('Sphere of Influence' in result.get('error','') or '其他工程/几何' in result.get('error',''), result.get('error',''))
+
+    def test_publish_can_start_fresh_after_old_project_controls_are_absent(self):
+        with tempfile.TemporaryDirectory() as d:
+            f=Fixture();f.test_auto_review=False;snap=f.marked(d)
+            preview=f.run(d,'warning_refine_preview',32,snap)
+            self.assertEqual(preview['status'],'ok',preview.get('error'))
+            plan=preview['summary'];chosen=[plan['clusters'][0]['candidate_id']]
+            choose(d,plan,chosen)
+            pathlib.Path(d,'warning_refinement_managed.json').write_text(json.dumps({
+                'schema_version':2,'project':'E:/ALD/Previous','fingerprint':'old-geometry',
+                'controls':[{'name':'AutoMesh_QR_old','object_id':777,'body_id':1,
+                             'coordinate_system':'AutoMesh_QR_CS_old','cs_object_id':888,
+                             'size_mm':1.0,'radius_mm':3.0,'centre_mm':[0,0,0]}]
+            }))
+            published=f.run(d,'warning_refine_publish',33,snap)
+            self.assertEqual(published['status'],'ok',published.get('error'))
+            self.assertEqual(len(f.model.Mesh.Children),1)
+
+
 if __name__=='__main__':unittest.main()
 
 class NearDuplicateTests(unittest.TestCase):
@@ -164,7 +213,7 @@ class R79CompatibilityTests(unittest.TestCase):
             self.assertEqual(r['status'],'ok',r.get('error'))
             self.assertEqual(len(f.model.Mesh.Children),4)
             reconciled=json.loads(manifest.read_text('utf8'))
-            self.assertEqual(reconciled['schema_version'],2)
+            self.assertEqual(reconciled['schema_version'],3)
             self.assertEqual(len(set(x['candidate_id'] for x in reconciled['controls'])),4)
 
     def test_changed_mesh_element_count_invalidates_pending_candidates(self):

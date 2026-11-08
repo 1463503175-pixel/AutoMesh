@@ -36,16 +36,19 @@ type Named struct {
 	IDs  []int  `json:"ids"`
 }
 type Snapshot struct {
-	GeometryUnit      string           `json:"geometry_unit"`
-	DisplayUnitSystem string           `json:"display_unit_system"`
-	DisplayLengthUnit string           `json:"display_length_unit"`
-	Project           string           `json:"project"`
-	Fingerprint       string           `json:"fingerprint"`
-	Bodies            []Body           `json:"bodies"`
-	Faces             []Face           `json:"faces"`
-	Named             []Named          `json:"named"`
-	Controls          []map[string]any `json:"controls"`
-	Mesh              map[string]any   `json:"mesh"`
+	GeometryUnit                     string           `json:"geometry_unit"`
+	DisplayUnitSystem                string           `json:"display_unit_system"`
+	DisplayLengthUnit                string           `json:"display_length_unit"`
+	Project                          string           `json:"project"`
+	Fingerprint                      string           `json:"fingerprint"`
+	Bodies                           []Body           `json:"bodies"`
+	Faces                            []Face           `json:"faces"`
+	Named                            []Named          `json:"named"`
+	Controls                         []map[string]any `json:"controls"`
+	ControlsComplete                 bool             `json:"controls_complete,omitempty"`
+	WarningCoordinateSystems         []map[string]any `json:"warning_coordinate_systems,omitempty"`
+	WarningCoordinateSystemsComplete bool             `json:"warning_coordinate_systems_complete,omitempty"`
+	Mesh                             map[string]any   `json:"mesh"`
 }
 type Control struct {
 	Name        string  `json:"name"`
@@ -548,6 +551,8 @@ func writeAtomic(filename string, b []byte) error {
 // Only replace embedded generated worker files from verified AutoMesh releases.
 // Unknown or user-edited scripts must be examined rather than silently lost.
 var knownLegacyWorkerHashes = map[string]bool{
+	"c6bbc68afb28ac07add565021498544c29a4bcc4928d6bc8527f9bc866a991d6": true, // exact R8.0.3 worker; permits safe R8.0.4 continuous-refinement upgrade
+	"5a9f10af7ad53b9ff168f52151375bfd87a456ec3c09b2627eb37dde745153c7": true, // exact R8.0.1 worker; permits safe in-place R8.0.2 upgrade
 	"7d4ec6d73f06a3c701535d71765f903b4d29be7a59d5b45bbf0bb66a49ca25e4": true, // verified R7.9 original release Worker for safe R8.0 upgrade
 	"a6d252a4d0a57c6b723b494280922c0cf83a0c3743e749bb4f6f4345037820d9": true, // verified R7.5 release meshing_worker.py; R7.6 safe upgrade
 	"1e5af1689430ac9c4c10ff63bee7065ca808b9bbe447251dfb37f6136e6b7b04": true, // verified R7.4 distribution, required for safe R7.4 -> R7.4.1 upgrade
@@ -589,6 +594,8 @@ var knownLegacyAssetHashes = map[string]map[string]bool{
 		"5f39429a1afb9267e5870cbe87dd73c5048ea1d3d4081c4bafb9b7707b9f5acc": true,
 	},
 	"warning_refinement.py": {
+		"899fbef06a7285b03168ef935fde9394ce9c2d605180baa8920d59b9641711fd": true, // exact R8.0.3 warning module; permits safe R8.0.4 continuous-refinement upgrade
+		"eaebbad9c9dac0b1a9e18d755ef19d0b236cfe8b8db444e4b46e2b62ffd6139a": true, // exact R8.0.1 warning module; permits safe in-place R8.0.2 upgrade
 		"c3c6e20c5a80eca010011630e07c9c2581dd2d0d254d7cd787871a7bfa00c39c": true, // verified R7.9 original release warning module for safe R8.0 upgrade
 		"c13a583019f626528577642f00a7d15cc44ff5106604255d82affa811e9a2fc5": true, // verified R7.5 release warning_refinement.py; R7.6 safe upgrade
 		"2ddb5539dc492ae2ffc3f8348c2f0a0b1c917a7e4d78651fa411f59e87c76162": true, // R7.4.1 original verified asset: safe R7.5 upgrade

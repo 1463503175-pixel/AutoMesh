@@ -24,39 +24,100 @@ def utext(value):
 
 
 def write(path, data):
-    """Publish a complete JSON file, never expose a partially written result.
+    """Publish complete JSON receipts using a native Windows replace.
 
-    ACT and the Go UI read job receipts concurrently. A direct open(path,'w')
-    truncates the current receipt while it is being polled. Use a unique
-    same-directory temporary file and a Windows replace operation; retry
-    transient file-sharing violations without silently losing the task result.
+    R8.0.1 still depended on System.IO.File.Move/Replace overload dispatch in
+    IronPython. On some ACT hosts those calls return an opaque tuple such as
+    ('unknown', '\x00', 0, 1, ''), including for a brand-new job receipt.
+    Prefer Win32 MoveFileExW (Unicode paths, replace-existing + write-through).
+    If ctypes is unavailable in a particular ACT build, use a recoverable
+    same-directory rename sequence. Never delete the prior receipt first.
     """
     directory = os.path.dirname(os.path.abspath(path))
     text = json.dumps(data, ensure_ascii=True, indent=2).encode('utf-8')
     fd, temp = tempfile.mkstemp(prefix='.amwrite_', suffix='.tmp', dir=directory)
     try:
         os.close(fd)
-        # Use the standard open() path for IronPython's managed I/O layer.
-        # os.fdopen/os.fsync availability differs across ACT hosts.
         with open(temp, 'wb') as h:
             h.write(text)
             h.flush()
             if hasattr(os, 'fsync'):
                 try: os.fsync(h.fileno())
                 except (OSError, IOError, AttributeError): pass
-        last = None
-        for attempt in range(5):
-            try:
-                if os.path.isfile(path) and os.name == 'nt':
-                    from System.IO import File
-                    File.Replace(temp, path, None)
-                else:
-                    os.rename(temp, path)
-                return
-            except Exception as exc:
-                last = exc
-                time.sleep(0.06 * (attempt + 1))
-        raise IOError('atomic JSON receipt replace failed: %s: %s' % (path, last))
+
+        if os.name == 'nt':
+            native_error = None
+            # MoveFileExW is a Windows API rather than a .NET overload. It
+            # returns a real Win32 error code when a target is locked/denied.
+            for attempt in range(6):
+                try:
+                    import ctypes
+                    try:
+                        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+                    except TypeError:
+                        kernel32 = ctypes.WinDLL('kernel32')
+                    move = kernel32.MoveFileExW
+                    try:
+                        move.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+                        move.restype = ctypes.c_int
+                    except Exception:
+                        pass
+                    flags = 0x00000008  # MOVEFILE_WRITE_THROUGH
+                    if os.path.exists(path):
+                        flags |= 0x00000001  # MOVEFILE_REPLACE_EXISTING
+                    ok = move(ctypes.c_wchar_p(temp), ctypes.c_wchar_p(path), flags)
+                    if ok:
+                        return
+                    try: code = int(ctypes.get_last_error())
+                    except Exception:
+                        try: code = int(kernel32.GetLastError())
+                        except Exception: code = -1
+                    try: message = ctypes.FormatError(code)
+                    except Exception: message = 'Win32 MoveFileExW failed'
+                    native_error = 'MoveFileExW winerror=%s: %s' % (code, utext(message).strip())
+                except Exception as exc:
+                    native_error = 'MoveFileExW unavailable/failed: %s' % utext(exc)
+                    # If ctypes itself is unavailable, use the safe rename path.
+                    break
+                time.sleep(0.05 * (attempt + 1))
+
+            # Recoverable fallback for IronPython builds without usable ctypes
+            # or for a transient native file-sharing error. Keep the old file
+            # until the fully written temp file is ready to take its place.
+            backup = temp + '.previous'
+            fallback_errors = []
+            for attempt in range(6):
+                moved_old = False
+                try:
+                    if os.path.exists(path):
+                        os.rename(path, backup)
+                        moved_old = True
+                    try:
+                        os.rename(temp, path)
+                    except Exception:
+                        if moved_old and os.path.exists(backup) and not os.path.exists(path):
+                            os.rename(backup, path)
+                        raise
+                    if moved_old and os.path.exists(backup):
+                        try: os.remove(backup)
+                        except Exception: pass
+                    return
+                except Exception as exc:
+                    fallback_errors.append(utext(exc))
+                    if moved_old and os.path.exists(backup) and not os.path.exists(path):
+                        try: os.rename(backup, path)
+                        except Exception as restore_exc:
+                            fallback_errors.append('restore failed: ' + utext(restore_exc))
+                    time.sleep(0.05 * (attempt + 1))
+            raise IOError('JSON receipt replace failed; %s; rename fallback: %s' %
+                          (native_error or 'native API not available', ' | '.join(fallback_errors[-3:])))
+        else:
+            replace = getattr(os, 'replace', None)
+            if replace is not None:
+                replace(temp, path)
+            else:
+                os.rename(temp, path)
+            return
     finally:
         if os.path.isfile(temp):
             try: os.remove(temp)
@@ -172,10 +233,59 @@ def resolve_current_model(model, extapi):
         u' 未清除或修改网格、命名组、Sizing；上次扫描结果未被覆盖。\nACT roots: '+utext('; '.join(reports)))
 
 
+def live_control_inventory():
+    """Read the current Meshing Sizing tree and AutoMesh QR coordinate systems.
+
+    Refreshes only live control metadata; geometry remains the cached read-only
+    snapshot after quick_geometry_identity has proved it is unchanged.
+    """
+    result = {'controls': [], 'controls_complete': False,
+              'warning_coordinate_systems': [],
+              'warning_coordinate_systems_complete': False}
+    for c in Model.Mesh.Children:
+        item = {'name': utext(c.Name), 'category': utext(c.DataModelObjectCategory)}
+        try: item['object_id'] = int(c.ObjectId)
+        except Exception: pass
+        try: item['ids'] = [int(i) for i in c.Location.Ids]
+        except Exception: pass
+        try: item['mm'] = utext(c.ElementSize)
+        except Exception: pass
+        if item['name'].startswith('AutoMesh_QR_'):
+            try:
+                item['is_sizing'] = bool(_is_sizing(c))
+                item['type'] = utext(c.Type)
+                item['suppressed'] = bool(_is_control_suppressed(c))
+                item['body_ids'] = sorted(int(v) for v in _effective_sizing_ids(c))
+                item['size_mm'] = float(_read_control_mm(c))
+                item['radius_mm'] = float(_length_mm(c.SphereRadius))
+                cs = c.SphereCenter
+                item['coordinate_system_name'] = utext(cs.Name)
+                item['coordinate_system_object_id'] = int(cs.ObjectId)
+                item['centre_mm'] = [float(v) for v in _origin_coords_mm(cs)]
+            except Exception as exc:
+                item['warning_control_error'] = utext(exc)[:300]
+        result['controls'].append(item)
+    result['controls_complete'] = True
+    try:
+        cs_root = getattr(Model, 'CoordinateSystems', None)
+        if cs_root is None or getattr(cs_root, 'Children', None) is None:
+            raise RuntimeError('CoordinateSystems.Children unavailable')
+        for cs in cs_root.Children:
+            name = utext(getattr(cs, 'Name', ''))
+            if name.startswith('AutoMesh_QR_CS_'):
+                result['warning_coordinate_systems'].append({'name': name, 'object_id': int(cs.ObjectId)})
+        result['warning_coordinate_systems_complete'] = True
+    except Exception:
+        result['warning_coordinate_systems_complete'] = False
+    return result
+
+
 def snapshot():
     result = {'project': utext(ExtAPI.DataModel.Project.ProjectDirectory),
               'bodies': [], 'faces': [], 'named': [], 'controls': [], 'mesh': {},
-              'geometry_unit': 'unknown', 'display_unit_system': 'unknown', 'display_length_unit': 'unknown'}
+              'geometry_unit': 'unknown', 'display_unit_system': 'unknown', 'display_length_unit': 'unknown',
+              'controls_complete': False, 'warning_coordinate_systems': [],
+              'warning_coordinate_systems_complete': False}
     try:
         active_unit = utext(ExtAPI.Application.ActiveUnitSystem)
         result['display_unit_system'] = active_unit
@@ -268,17 +378,7 @@ def snapshot():
             except Exception:
                 item['warning'] = 'No readable geometry scoping'
             result['named'].append(item)
-    for c in Model.Mesh.Children:
-        item = {'name': utext(c.Name), 'category': utext(c.DataModelObjectCategory)}
-        try:
-            item['ids'] = [int(i) for i in c.Location.Ids]
-        except Exception:
-            pass
-        try:
-            item['mm'] = utext(c.ElementSize)
-        except Exception:
-            pass
-        result['controls'].append(item)
+    result.update(live_control_inventory())
     for field in ('Elements','Nodes','PhysicsPreference','SolverPreference','ElementOrder','ElementSize','MaximumSize','GrowthRate','UseAdaptiveSizing','CaptureCurvature','CaptureProximity','DefeatureSize','UseAdvancedSizeFunction'):
         try:
             result['mesh'][field] = utext(getattr(Model.Mesh, field))
@@ -349,6 +449,14 @@ def read_only_verified_snapshot(job):
     ensure_current(job,current)
     if prior.get('fingerprint')!=current['fingerprint'] or prior.get('project')!=current['project']:
         raise RuntimeError('Current geometry differs from saved scan; rescan before quality check')
+    # Mesh/Sizing may change after the original full scan (for example, after
+    # the user manually regenerates a mesh). Refresh only live read-only data.
+    prior['mesh'] = prior.get('mesh') or {}
+    for field in ('Elements','Nodes','ElementSize','MaximumSize','GrowthRate'):
+        try: prior['mesh'][field] = utext(getattr(Model.Mesh, field))
+        except Exception: pass
+    prior.update(live_control_inventory())
+    write(SNAPSHOT_FILE, prior)
     return prior
 
 
@@ -2124,7 +2232,7 @@ def generate_reviewed(job, state):
     boundary=verify_live_boundaries(state)  # re-read NOW, after operator Meshing edits
     manifest_path=os.path.join(os.path.dirname(JOB_FILE),'editable_manifest.json')
     qr_manifest_path=os.path.join(os.path.dirname(JOB_FILE),'warning_refinement_managed.json')
-    qr_manifest=read(qr_manifest_path) if os.path.isfile(qr_manifest_path) else None
+    qr_manifest=_current_warning_owner(state) if os.path.isfile(qr_manifest_path) else None
     if not os.path.isfile(manifest_path):
         # Allow verified, explicitly published quality-hotspot SOI controls as
         # the only local sizing; no auto creation or blind remesh.
@@ -2174,8 +2282,6 @@ def generate_reviewed(job, state):
     known=set(x['sizing'] for x in manifest['prepared'])
     qr_allowed={}
     if qr_manifest is not None:
-        if qr_manifest.get('project')!=state['project'] or qr_manifest.get('fingerprint')!=state['fingerprint']:
-            raise RuntimeError('Previously published warning hotspot scope belongs to another model; no mesh cleared')
         qr_allowed=dict((x['name'],x) for x in qr_manifest.get('controls',[]))
         if not qr_allowed or len(qr_allowed)!=len(qr_manifest.get('controls',[])):
             raise RuntimeError('Warning hotspot manifest is missing or duplicated')

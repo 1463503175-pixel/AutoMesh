@@ -11,6 +11,7 @@ import (
 
 // WarningPlan is a read-only draft; nothing here executes an ANSYS action.
 type WarningPlan struct {
+	JobID          string             `json:"job_id,omitempty"`
 	SchemaVersion  int                `json:"schema_version"`
 	Status         string             `json:"status"`
 	PlanID         string             `json:"plan_id"`
@@ -49,6 +50,13 @@ type WarningHotspot struct {
 	ScopeKind    string    `json:"scope_kind"`
 	Mapping      []string  `json:"mapping_methods"`
 	WaferGap     string    `json:"wafer_gap_clearance"`
+}
+
+type warningPlanReportData struct {
+	WarningPlan
+	ExistingControls      []warningControlSnapshot
+	ExistingControlsKnown bool
+	ExistingBudget        int
 }
 
 func validateWarningDiagnostic(p WarningPlan, snapshot *Snapshot, reviewedPlanID string) error {
@@ -98,7 +106,14 @@ func (w Workspace) SaveWarningPlanHTML(s *Snapshot, reviewedPlanID string) (stri
 	if err = validateWarningDiagnostic(p, s, reviewedPlanID); err != nil {
 		return "", err
 	}
-	const page = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AutoMesh 警告区局部细化预览</title><style>body{font:15px/1.6 "Microsoft YaHei",Arial,sans-serif;color:#172c4b;background:#f5f7fc;margin:0;padding:32px}main{max-width:1150px;margin:auto;background:white;padding:32px;border-radius:16px}h1{margin:0 0 12px}small{color:#64748b}.lead{background:#eef3fb;padding:16px;border-radius:10px}table{border-collapse:collapse;width:100%;margin-top:18px}td,th{padding:11px;border-bottom:1px solid #dde5ef;text-align:left;vertical-align:top;word-break:break-word}th{background:#eef3fb}p{margin:12px 0}code{font-size:12px}strong{font-weight:700}</style></head><body><main><h1>高偏度单元分簇细化方案 · 逐簇审核</h1><small>只读报告，不是 ANSYS 截图；不会生成网格或修改任何 Sizing</small><div class="lead"><p><strong>警告单元</strong> {{.WarningCount}} 个，候选覆盖 {{.CoveredCount}} 个，暂不覆盖 {{.UncoveredCount}} 个；列出 {{len .Clusters}} 处候选影响域；由用户在 AutoMesh 勾选发布</p><p>对应原网格：{{.MeshElements}} 单元。局部体积/尺寸³ 代理量：{{.TotalCellProxy}}（仅为安全阈值，不是实际新增单元数）</p><p>工程：<code>{{.Project}}</code></p><p>方案 ID：<code>{{.PlanID}}</code></p></div><table><thead><tr><th>排序编号</th><th>实测最大偏度</th><th>几何 Body ID / 作用域</th><th>球心 X/Y/Z（mm）</th><th>半径（mm）</th><th>目标尺寸（mm）</th><th>预算代理</th><th>片间安全核验</th><th>覆盖单元 ID</th></tr></thead><tbody>{{range $i, $c := .Clusters}}<tr><td>{{add $i 1}}</td><td>{{if $c.SkewMax}}{{skewFormat $c.SkewMax}}{{else}}未取得{{end}}</td><td>{{$c.BodyID}} / {{$c.ScopeKind}}<small>几何来源：{{joinStrings $c.Mapping}}</small></td><td>{{range $j,$v := $c.CentreMM}}{{if $j}}, {{end}}{{printf "%.4f" $v}}{{end}}</td><td>{{printf "%.3f" $c.RadiusMM}}</td><td>{{printf "%.3f" $c.SizeMM}}</td><td>{{$c.Proxy}}</td><td>{{$c.WaferGap}}（需人工确认）</td><td>{{joinIDs $c.ElementIDs}}</td></tr>{{end}}</tbody></table><p><strong>注意：</strong>{{.Notes}}</p>{{if eq .Status "no_safe_candidates"}}<p><strong>诊断已完成：没有安全的自动细化候选，不会发布 Sizing，也不修改网格。</strong></p>{{end}}<h2>未覆盖区域及原因</h2><table><thead><tr><th>警告单元 ID / 数量</th><th>排除原因</th><th>候选半径 mm / 预算（如适用）</th></tr></thead><tbody>{{range .RejectedGroups}}<tr><td>{{joinIDs .ElementIDs}}{{if .Count}}（{{.Count}} 单元）{{end}}</td><td>{{reasonZh .Reason}}<small>({{.Reason}})</small></td><td>{{printf "%.3f" .ProposedRadiusMM}} / {{.Proxy}}</td></tr>{{end}}</tbody></table><p>安全审核：每个候选最多 64 个标记单元、影响半径不大于 12 mm；本次列表包含完整分析得到的候选（最多 4096 条）；实际勾选发布每批最多 6 组，已有和新增控制累计预算代理不得超过 120000。并核对原有面、边及实体的已生效 Sizing，避免覆盖更细的手工控制。若 ACT 不能真实测量晶圆间净空，本报告会明确标注“需人工确认”，不会冒充几何验证已通过。</p><p>发布仅创建可编辑 Sizing + 坐标系，不会删除现有网格或执行 GenerateMesh。发布后需要单独审核重划并复测偏度和正交质量。</p></main></body></html>`
+	existingControls, known, controlErr := snapshotWarningControls(s)
+	if controlErr != nil {
+		existingControls = nil
+		known = false
+	}
+	reportData := warningPlanReportData{WarningPlan: p, ExistingControls: existingControls,
+		ExistingControlsKnown: known, ExistingBudget: warningSnapshotBudget(existingControls)}
+	const page = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AutoMesh 警告区局部细化预览</title><style>body{font:15px/1.6 "Microsoft YaHei",Arial,sans-serif;color:#172c4b;background:#f5f7fc;margin:0;padding:32px}main{max-width:1150px;margin:auto;background:white;padding:32px;border-radius:16px}h1{margin:0 0 12px}small{color:#64748b}.lead{background:#eef3fb;padding:16px;border-radius:10px}table{border-collapse:collapse;width:100%;margin-top:18px}td,th{padding:11px;border-bottom:1px solid #dde5ef;text-align:left;vertical-align:top;word-break:break-word}th{background:#eef3fb}p{margin:12px 0}code{font-size:12px}strong{font-weight:700}</style></head><body><main><h1>高偏度单元分簇细化方案 · 逐簇审核</h1><small>只读报告，不是 ANSYS 截图；不会生成网格或修改任何 Sizing</small><div class="lead"><p><strong>警告单元</strong> {{.WarningCount}} 个，候选覆盖 {{.CoveredCount}} 个，暂不覆盖 {{.UncoveredCount}} 个；列出 {{len .Clusters}} 处候选影响域；由用户在 AutoMesh 勾选发布</p><p>对应原网格：{{.MeshElements}} 单元。局部体积/尺寸³ 代理量：{{.TotalCellProxy}}（仅为安全阈值，不是实际新增单元数）</p><p>工程：<code>{{.Project}}</code></p><p>方案 ID：<code>{{.PlanID}}</code></p></div><table><thead><tr><th>排序编号</th><th>实测最大偏度</th><th>几何 Body ID / 作用域</th><th>球心 X/Y/Z（mm）</th><th>半径（mm）</th><th>目标尺寸（mm）</th><th>预算代理</th><th>片间安全核验</th><th>覆盖单元 ID</th></tr></thead><tbody>{{range $i, $c := .Clusters}}<tr><td>{{add $i 1}}</td><td>{{if $c.SkewMax}}{{skewFormat $c.SkewMax}}{{else}}未取得{{end}}</td><td>{{$c.BodyID}} / {{$c.ScopeKind}}<small>几何来源：{{joinStrings $c.Mapping}}</small></td><td>{{range $j,$v := $c.CentreMM}}{{if $j}}, {{end}}{{printf "%.4f" $v}}{{end}}</td><td>{{printf "%.3f" $c.RadiusMM}}</td><td>{{printf "%.3f" $c.SizeMM}}</td><td>{{$c.Proxy}}</td><td>{{$c.WaferGap}}（需人工确认）</td><td>{{joinIDs $c.ElementIDs}}</td></tr>{{end}}</tbody></table>{{if .ExistingControlsKnown}}{{if .ExistingControls}}<h2>当前模型已有历史 Sizing（保留，不修改）</h2><p>已从当前 ACT 模型树读取 <strong>{{len .ExistingControls}}</strong> 个球形影响域控制；累计预算代理约 <strong>{{.ExistingBudget}}</strong>。这些控制属于先前优化轮次，不要求其旧候选 ID 出现在本轮网格中。新发布前仍会由 ACT 重新读取对象 ID、Body、球心、半径、尺寸和坐标系。</p><table><thead><tr><th>历史 Sizing 名称</th><th>对象 ID</th><th>Body</th><th>球心 X/Y/Z（mm）</th><th>半径（mm）</th><th>尺寸（mm）</th><th>预算代理</th></tr></thead><tbody>{{range .ExistingControls}}<tr><td>{{.Name}}</td><td>{{.ObjectID}}</td><td>{{.BodyID}}</td><td>{{range $i,$v := .CentreMM}}{{if $i}}, {{end}}{{printf "%.4f" $v}}{{end}}</td><td>{{printf "%.3f" .RadiusMM}}</td><td>{{printf "%.3f" .SizeMM}}</td><td>{{.Proxy}}</td></tr>{{end}}</tbody></table>{{else}}<p>当前模型未读取到 AutoMesh_QR 历史 Sizing。</p>{{end}}{{else}}<p>本次只读扫描未提供完整历史 Sizing 清单；本报告仅展示当前候选，不代表历史控制已核验。</p>{{end}}<p><strong>注意：</strong>{{.Notes}}</p>{{if eq .Status "no_safe_candidates"}}<p><strong>诊断已完成：没有安全的自动细化候选，不会发布 Sizing，也不修改网格。</strong></p>{{end}}<h2>未覆盖区域及原因</h2><table><thead><tr><th>警告单元 ID / 数量</th><th>排除原因</th><th>候选半径 mm / 预算（如适用）</th></tr></thead><tbody>{{range .RejectedGroups}}<tr><td>{{joinIDs .ElementIDs}}{{if .Count}}（{{.Count}} 单元）{{end}}</td><td>{{reasonZh .Reason}}<small>({{.Reason}})</small></td><td>{{printf "%.3f" .ProposedRadiusMM}} / {{.Proxy}}</td></tr>{{end}}</tbody></table><p>安全审核：每个候选最多 64 个标记单元、影响半径不大于 12 mm；本次列表包含完整分析得到的候选（最多 4096 条）；实际勾选发布每批最多 6 组，已有和新增控制累计预算代理不得超过 120000。并核对原有面、边及实体的已生效 Sizing，避免覆盖更细的手工控制。若 ACT 不能真实测量晶圆间净空，本报告会明确标注“需人工确认”，不会冒充几何验证已通过。</p><p>发布仅创建可编辑 Sizing + 坐标系，不会删除现有网格或执行 GenerateMesh。发布后需要单独审核重划并复测偏度和正交质量。</p></main></body></html>`
 	funcs := template.FuncMap{"add": func(a, b int) int { return a + b },
 		"joinStrings": func(items []string) string { return strings.Join(items, ", ") },
 		"skewFormat": func(value *float64) string {
@@ -136,7 +151,7 @@ func (w Workspace) SaveWarningPlanHTML(s *Snapshot, reviewedPlanID string) (stri
 	if err != nil {
 		return "", err
 	}
-	e := templ.Execute(f, p)
+	e := templ.Execute(f, reportData)
 	closeErr := f.Close()
 	if e != nil {
 		return "", e

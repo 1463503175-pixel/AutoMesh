@@ -536,16 +536,21 @@ type state struct {
 	storageDoneFiles          int
 	storageError              error
 	// R8.0 explicit, reviewed candidate selection: never implicit/all-selected.
-	reviewPlan              WarningPlan
-	reviewPublished         map[string]bool
-	reviewExistingBudget    int
-	reviewSelectedBudget    int
-	reviewOverlapCount      int
-	reviewOverlapError      bool
-	reviewSelectedCount     int
-	reviewPopulating        bool
-	reviewDetailsOpened     bool
-	reviewSelectedSignature string
+	reviewPlan                  WarningPlan
+	reviewPublished             map[string]bool
+	reviewExistingBudget        int
+	reviewExistingControls      []warningControlSnapshot
+	reviewExistingControlCount  int
+	reviewExistingOverlapCount  int
+	reviewExistingNearDuplicate bool
+	reviewSelectedBudget        int
+	reviewOverlapCount          int
+	reviewOverlapError          bool
+	reviewSelectedCount         int
+	reviewPopulating            bool
+	reviewDetailsOpened         bool
+	reviewPublishBlockedReason  string
+	reviewSelectedSignature     string
 }
 
 var ui = &state{controls: map[string]uintptr{}, showAllNamed: true, security: "auto", status: "未连接 Workbench", progress: "准备就绪", details: "首先连接已打开的 ANSYS Workbench 2024 R2。"}
@@ -2363,10 +2368,17 @@ func (a *state) finish(connecting bool) {
 			return
 		case "warning_refine_publish":
 			a.progress = "所选警告区 Sizing 已发布 · 不会自动重划"
-			a.message("已发布所勾选候选，其余候选仍可从审核列表继续选择。Meshing 网格没有重划；后续如重新划网须重新筛选偏度。")
-			// Keep the same currently scanned geometry, marker and review receipt;
-			// only Sizing controls were created. The worker rechecks live scope on
-			// every subsequent publish. Do not silently mark mesh quality improved.
+			added := printable(a.report()["sizing_count"])
+			previous := printable(a.report()["existing_control_count"])
+			total := printable(a.report()["cumulative_control_count"])
+			remaining := printable(a.report()["remaining_count"])
+			message := fmt.Sprintf("本次新增 %s 个 Sizing；保留历史 %s 个；当前累计 %s 个。本轮尚未发布的候选 %s 个仍可继续审核。Meshing 网格没有重划。", added, previous, total, remaining)
+			if warning := strings.TrimSpace(printable(a.report()["snapshot_refresh_warning"])); warning != "" && warning != "—" {
+				message += "；" + warning
+			}
+			a.message(message)
+			// Keep the same geometry and current marker; only reviewed Sizing
+			// controls were added. The live control inventory is refreshed by ACT.
 			a.switchPage(3)
 			return
 		case "mark_failed", "mark_warning", "mark_high_skew":
@@ -2906,6 +2918,12 @@ func (a *state) act(id int) {
 		mm, _ := strconv.ParseFloat(strings.TrimSpace(read(a.ctl("size"))), 64)
 		alert(globalReviewText(a.snapshot, mm, send(a.ctl("global"), BM_GETCHECK, 0, 0) == 1))
 	case ID_TASK_STATUS:
+		// A terminal ACT marker may be waiting for the 10-second safety window.
+		// Reconcile only explicit terminal markers; never clear a live task lease.
+		if err := a.ws.ReconcileFinishedLease(); err != nil {
+			alert("任务状态恢复未完成：" + err.Error() + "\n没有重新投递，也没有操作网格。")
+			return
+		}
 		alert(a.ws.taskStatus())
 	case ID_TASK_STOP:
 		a.requestStop()
@@ -3243,7 +3261,7 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		releaseGDI()
 		// Save a short local performance diagnostic after closing; no UI-thread disk I/O during painting.
 		perf := map[string]any{"paint_count": uiRepaints, "paint_max_ms": float64(paintDurationMax.Microseconds()) / 1000,
-			"back_buffer_allocations": backBitmapAllocations, "control_moves": layoutMoves, "version": "R8.0-Selected-Candidate-Review",
+			"back_buffer_allocations": backBitmapAllocations, "control_moves": layoutMoves, "version": "R8.0.4-Continuous-Refinement",
 			"first_paint_ms": firstPaintMs, "nav_switch_max_ms": float64(navigationDurationMax.Microseconds()) / 1000,
 			"layout_max_ms": float64(layoutDurationMax.Microseconds()) / 1000}
 		_ = writeJSON(ui.ws.path("ui_performance.json"), perf)
@@ -3287,7 +3305,7 @@ func main() {
 		alert("无法注册 Windows 主窗口")
 		return
 	}
-	ui.window = call(create, 0, name, ptr("AutoMesh 2024 R2  |  R8.0 · Candidate Review"), WS_OVERLAPPEDWINDOW|WS_VSCROLL|WS_HSCROLL, 70, 25, 1240, 730, 0, 0, ui.instance, 0)
+	ui.window = call(create, 0, name, ptr("AutoMesh 2024 R2  |  R8.0.4 · Continuous Refinement"), WS_OVERLAPPEDWINDOW|WS_VSCROLL|WS_HSCROLL, 70, 25, 1240, 730, 0, 0, ui.instance, 0)
 	if ui.window == 0 {
 		alert("无法创建 Windows 主窗口")
 		return

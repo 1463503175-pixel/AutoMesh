@@ -42,7 +42,7 @@ func (a *state) updateActionStates() {
 			enabled(a.ctl(key), !a.busy)
 		}
 		ids, budget := a.selectedCandidates()
-		enabled(a.ctl("reviewconfirm"), !a.busy && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
+		enabled(a.ctl("reviewconfirm"), !a.busy && a.reviewPublishBlockedReason == "" && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
 	}
 	refresh()
 }

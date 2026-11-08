@@ -18,6 +18,9 @@ func (w Workspace) taskStatus() string {
 	lease, err := readJSON[Task](w.taskLeasePath())
 	if err != nil {
 		if os.IsNotExist(err) {
+			if last, e := w.LoadResult(); e == nil && last.Stage == "recovered_from_job_bound_warning_plan" {
+				return "当前没有待确认任务占用。\n上次任务：" + last.Phase + "（" + last.JobID + "）\n已从同一 Job ID 的局部方案文件恢复预览结果：" + last.Status + "\n未修改 Mesh，也没有重新投递。"
+			}
 			if last, e := w.LoadResult(); e == nil && last.Stage == "recovered_from_ACT_terminal_marker" {
 				return "当前没有待确认任务占用。\n上次任务：" + last.Phase + "（" + last.JobID + "）\n已从 ACT 明确的失败/取消信号恢复终态：" + last.Status + "\n原因：" + last.Error + "\n没有重新投递，也没有操作网格。"
 			}
@@ -83,6 +86,15 @@ func (w Workspace) meshingProcessCrash(jobID string) (string, bool) {
 // Use while waiting on a synchronous Workbench SendCommand transport.
 // A timeout cannot prove the remote ACT task is stopped.
 func remoteJobObservation(w Workspace, jobID string) (status string, terminal *Result) {
+	// ACT may have completed its operation but failed to write its final JSON.
+	// Recover only when this exact job has an explicit terminal-write marker;
+	// do not release the lease here. taskRun owns release after observing result.
+	if lease, leaseErr := readJSON[Task](w.taskLeasePath()); leaseErr == nil && lease.JobID == jobID {
+		if progress, progressErr := readJSON[ActProgress](w.path("job_progress_" + jobID + ".json")); progressErr == nil && progress.JobID == jobID &&
+			(progress.Stage == "终态结果全部写入失败" || progress.Stage == "部分回执写入失败" || progress.Stage == "任务失败" || progress.Stage == "已安全取消") {
+			_, _, _ = w.recoverTerminalProgress(lease)
+		}
+	}
 	r, e := w.LoadResult()
 	if terminal, ok := w.terminalResultForJob(jobID); ok {
 		return "act_terminal", &terminal

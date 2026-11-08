@@ -1,3 +1,13 @@
+
+## 最新版本：R8.0.4
+
+- Windows x64 程序：[app/AutoMesh.exe](app/AutoMesh.exe)
+- 完整发布包：[releases/AutoMesh_R8_0_4_Continuous_Refinement.zip](releases/AutoMesh_R8_0_4_Continuous_Refinement.zip)
+- 版本说明：[docs/releases/R8.0.4_连续优化与历史Sizing接管.md](docs/releases/R8.0.4_连续优化与历史Sizing接管.md)
+- 完整源码位于 [source/](source/)。
+
+首次使用请先阅读版本说明。离线测试不等同于 ANSYS 2024 R2 实机端到端验收；发布 Sizing 前仍须在当前 Meshing 会话核对历史控件与影响域。
+
 # AutoMesh R8.0
 
 ANSYS Meshing 网格质量检查与局部细化工具。

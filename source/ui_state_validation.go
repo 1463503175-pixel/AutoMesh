@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -59,10 +58,11 @@ func validSkewRange(lowText, highText string) bool {
 
 // An HTML file existing on disk does not prove it describes the active Mesh.
 func (w Workspace) hasCurrentWarningReport(s *Snapshot) bool {
+	// The HTML is an output artifact created by the View action itself. Requiring
+	// it here creates a circular gate: the button stays disabled until the file
+	// exists, while the file cannot exist until the button is clicked. The
+	// authoritative prerequisite is the current, job-bound JSON preview receipt.
 	if s == nil {
-		return false
-	}
-	if _, err := os.Stat(w.path("warning_refinement_plan.html")); err != nil {
 		return false
 	}
 	_, err := w.ReadReviewedWarningDiagnostic(s)

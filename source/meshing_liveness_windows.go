@@ -9,6 +9,14 @@ import (
 )
 
 // Probe a PID recorded by ACT itself, not a guessed process from the taskbar.
+// WaitForSingleObject requires SYNCHRONIZE in addition to query permission;
+// omitting it made a live Meshing process look like Access is denied.
+const (
+	processQueryLimitedInformation uint32 = 0x1000
+	processSynchronize             uint32 = 0x00100000
+	meshingProcessQueryAccess             = processQueryLimitedInformation | processSynchronize
+)
+
 // A mismatched start timestamp means the PID has been recycled.
 func inspectMeshingProcess(pid int, startedFiletime string) (string, string) {
 	if pid <= 0 || startedFiletime == "" {
@@ -18,7 +26,7 @@ func inspectMeshingProcess(pid int, startedFiletime string) (string, string) {
 	if err != nil || expected == 0 {
 		return "unknown", "进程启动时间无效"
 	}
-	h, err := syscall.OpenProcess(0x1000, false, uint32(pid)) // PROCESS_QUERY_LIMITED_INFORMATION
+	h, err := syscall.OpenProcess(meshingProcessQueryAccess, false, uint32(pid))
 	if err != nil {
 		if err == syscall.Errno(87) {
 			return "exited", "系统中已不存在原 PID"

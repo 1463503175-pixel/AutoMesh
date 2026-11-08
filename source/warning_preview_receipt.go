@@ -41,6 +41,9 @@ func (w Workspace) RecordWarningPreview(result Result, current *Snapshot) error 
 	if err := json.Unmarshal(b, &plan); err != nil {
 		return err
 	}
+	if plan.JobID != "" && plan.JobID != result.JobID {
+		return fmt.Errorf("方案文件属于其他 ACT 任务：%s", plan.JobID)
+	}
 	if err := validateWarningDiagnostic(plan, current, planID); err != nil {
 		return fmt.Errorf("预览结果与诊断文件不一致: %w", err)
 	}
@@ -66,6 +69,9 @@ func (w Workspace) ReadReviewedWarningDiagnostic(current *Snapshot) (WarningPlan
 	if err = json.Unmarshal(b, &plan); err != nil {
 		return WarningPlan{}, err
 	}
+	if plan.JobID != "" && plan.JobID != proof.JobID {
+		return WarningPlan{}, errors.New("方案文件与预览任务回执不匹配")
+	}
 	if err = validateWarningDiagnostic(plan, current, proof.PlanID); err != nil {
 		return WarningPlan{}, err
 	}
@@ -82,7 +88,14 @@ func (w Workspace) ReadReviewedWarningPlan(current *Snapshot) (WarningPlan, erro
 	if proof.Project != current.Project || proof.Fingerprint != current.Fingerprint {
 		return WarningPlan{}, errors.New("已保存的警告区方案属于不同工程或几何，拒绝发布")
 	}
-	return w.loadWarningPlan(current, proof.PlanID)
+	plan, err := w.loadWarningPlan(current, proof.PlanID)
+	if err != nil {
+		return WarningPlan{}, err
+	}
+	if plan.JobID != "" && plan.JobID != proof.JobID {
+		return WarningPlan{}, errors.New("方案文件与预览任务回执不匹配")
+	}
+	return plan, nil
 }
 
 func (w Workspace) loadWarningPlan(current *Snapshot, planID string) (WarningPlan, error) {

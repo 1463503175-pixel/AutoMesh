@@ -32,6 +32,133 @@ def _warning_path(filename):
     return os.path.join(os.path.dirname(JOB_FILE), filename)
 
 
+def _live_warning_qr_controls():
+    return [x for x in Model.Mesh.Children if utext(getattr(x, 'Name', '')).startswith('AutoMesh_QR_')]
+
+
+def _live_warning_qr_coordinate_systems():
+    root = getattr(Model, 'CoordinateSystems', None)
+    if root is None:
+        return []
+    return [x for x in root.Children if utext(getattr(x, 'Name', '')).startswith('AutoMesh_QR_CS_')]
+
+
+def _adopt_live_warning_controls(state):
+    """Create a read-back ledger for reserved QR controls in the live ACT model.
+
+    This path is used only when the shared manifest is missing or belongs to a
+    different project/geometry. It does not trust old candidate IDs. It reads
+    each live Sizing and its paired coordinate system directly, verifies the
+    exact Body scope, type, units, center, radius and size, and never edits the
+    existing objects. The adopted ledger is persisted only after a successful
+    new publication batch.
+    """
+    live = _live_warning_qr_controls()
+    coordinate_systems = _live_warning_qr_coordinate_systems()
+    if not live:
+        return {'schema_version': 3, 'project': state['project'],
+                'fingerprint': state['fingerprint'], 'controls': [], 'rounds': [],
+                'adopted_from_live_model': True}
+
+    valid_bodies = set(int(x['id']) for x in state.get('bodies', []))
+    cs_by_key = {}
+    for cs in coordinate_systems:
+        key = (utext(cs.Name), int(cs.ObjectId))
+        if key in cs_by_key:
+            raise RuntimeError(u'发现重复的 AutoMesh 球心坐标系名称/对象 ID，不能安全接管。')
+        cs_by_key[key] = cs
+
+    entries = []
+    used_cs = set()
+    used_names = set()
+    used_ids = set()
+    for control in live:
+        name = utext(control.Name)
+        object_id = int(control.ObjectId)
+        if name in used_names or object_id in used_ids:
+            raise RuntimeError(u'发现重复的 AutoMesh_QR Sizing 身份，不能安全接管。')
+        used_names.add(name); used_ids.add(object_id)
+        if not _is_sizing(control):
+            raise RuntimeError(u'保留名称 AutoMesh_QR_ 对应对象并非可识别 Sizing：' + name)
+        if utext(getattr(control, 'Type', '')) != utext(SizingType.SphereOfInfluence):
+            raise RuntimeError(u'历史 AutoMesh_QR Sizing 不是 Sphere of Influence，需人工核对：' + name)
+        if _is_control_suppressed(control):
+            raise RuntimeError(u'历史 AutoMesh_QR Sizing 已被停用；请先人工核对启用状态：' + name)
+        scope = _effective_sizing_ids(control)
+        if len(scope) != 1:
+            raise RuntimeError(u'历史 AutoMesh_QR Sizing 不是唯一 Body 作用域，不能安全接管：' + name)
+        body_id = list(scope)[0]
+        if body_id not in valid_bodies:
+            raise RuntimeError(u'历史 AutoMesh_QR Sizing 的 Body 不属于当前几何：' + name)
+        try:
+            cs_obj = control.SphereCenter
+            cs_key = (utext(cs_obj.Name), int(cs_obj.ObjectId))
+        except Exception:
+            raise RuntimeError(u'历史 AutoMesh_QR Sizing 缺少可读取的球心坐标系：' + name)
+        if not cs_key[0].startswith('AutoMesh_QR_CS_') or cs_key not in cs_by_key:
+            raise RuntimeError(u'历史 AutoMesh_QR Sizing 的球心坐标系无法唯一匹配：' + name)
+        if cs_key in used_cs:
+            raise RuntimeError(u'多个历史 Sizing 共用同一球心坐标系，不能自动接管：' + name)
+        used_cs.add(cs_key)
+        suffix = name[len('AutoMesh_QR_'):]
+        if cs_key[0] != 'AutoMesh_QR_CS_' + suffix:
+            raise RuntimeError(u'历史 Sizing 与球心坐标系命名配对不一致：' + name)
+        size = _read_control_mm(control)
+        radius = _length_mm(control.SphereRadius)
+        centre = _origin_coords_mm(cs_by_key[cs_key])
+        if not (0.5 <= size <= 5.0 and 0.0 < radius <= MAX_RADIUS_MM):
+            raise RuntimeError(u'历史 Sizing 尺寸或半径超出可核验范围：' + name)
+        if len(centre) != 3 or any(math.isnan(float(v)) or math.isinf(float(v)) for v in centre):
+            raise RuntimeError(u'历史 Sizing 球心坐标无效：' + name)
+        proxy = int(math.ceil((4.0 / 3.0) * math.pi * (radius / size) ** 3))
+        entries.append({'candidate_id': '', 'name': name, 'object_id': object_id,
+                        'coordinate_system': cs_key[0], 'cs_object_id': cs_key[1],
+                        'body_id': body_id, 'radius_mm': radius, 'size_mm': size,
+                        'centre_mm': [float(v) for v in centre],
+                        'cell_budget_proxy': proxy, 'adopted_from_live_model': True})
+
+    if len(used_cs) != len(coordinate_systems):
+        orphaned = [utext(x.Name) for x in coordinate_systems
+                    if (utext(x.Name), int(x.ObjectId)) not in used_cs]
+        raise RuntimeError(u'发现未配对的 AutoMesh_QR 球心坐标系：' + ', '.join(orphaned[:8]))
+    return {'schema_version': 3, 'project': state['project'],
+            'fingerprint': state['fingerprint'], 'controls': entries, 'rounds': [],
+            'adopted_from_live_model': True}
+
+
+def _current_warning_owner(state):
+    """Load the current ledger or safely adopt verified live QR controls.
+
+    Mesh element IDs and candidate IDs are mesh-round-specific. Existing ACT
+    Sizing objects are persistent controls and are validated by their live
+    object identities and properties, not by requiring old candidate IDs to
+    appear in a newly remeshed candidate list.
+    """
+    filename = _warning_path(_WARNING_MANAGED)
+    owner = {}
+    manifest_error = None
+    if os.path.isfile(filename):
+        try:
+            owner = read(filename)
+        except Exception as exc:
+            manifest_error = exc
+    live = _live_warning_qr_controls()
+    if manifest_error is not None:
+        if live:
+            return _adopt_live_warning_controls(state)
+        # A malformed shared manifest with no live QR Sizing in this model is
+        # stale metadata, not a reason to block a fresh model. Orphan QR
+        # coordinate systems are still checked before any publication.
+        return {}
+    same_model = bool(owner) and owner.get('project') == state['project'] and owner.get('fingerprint') == state['fingerprint']
+    if same_model:
+        if owner.get('controls') or not live:
+            return owner
+        return _adopt_live_warning_controls(state)
+    if live:
+        return _adopt_live_warning_controls(state)
+    return {}
+
 def warning_register_marker(summary, state):
     """Persist the identity of the newly created quality-element selection group."""
     groups = summary.get('created_groups') or []
@@ -98,8 +225,14 @@ def _read_warning_elements(state):
     face_to_body = dict((int(f['id']),int(f['body'])) for f in state.get('faces',[]))
     observations = []
     rejected = []
-    for eid in selected:
+    for selected_index, eid in enumerate(selected):
         cancellation_checkpoint()
+        if selected_index == 0 or (selected_index + 1) % 16 == 0 or selected_index + 1 == len(selected):
+            try:
+                pct = 72 + int(5.0 * (selected_index + 1) / max(1, len(selected)))
+                emit_progress(pct, '提取标记单元几何', '%d/%d 个单元' % (selected_index + 1, len(selected)))
+            except Exception:
+                pass
         try:
             element = data.ElementById(int(eid))
             node_ids = sorted(set(int(v) for v in element.CornerNodeIds))
@@ -332,11 +465,8 @@ def _existing_body_size_caps(state):
     valid_bodies=set(int(b['id']) for b in state['bodies'])
     face_to_body=dict((int(f['id']),int(f['body'])) for f in state['faces'])
     caps={}
-    owner_file=_warning_path(_WARNING_MANAGED)
-    owner=read(owner_file) if os.path.isfile(owner_file) else {}
+    owner=_current_warning_owner(state)
     owned=set((e.get('name'),int(e.get('object_id',-1))) for e in owner.get('controls',[]))
-    if owned and (owner.get('project')!=state['project'] or owner.get('fingerprint')!=state['fingerprint']):
-        raise RuntimeError(u'旧警告区 Sizing 发布记录属于其他工程或几何版本，拒绝自动复用。')
     unresolved=[]
     for control in Model.Mesh.Children:
         if not _is_sizing(control) or _is_control_suppressed(control):
@@ -389,6 +519,7 @@ def _existing_body_size_caps(state):
 
 def preview_warning_refinement(state):
     cancellation_checkpoint()
+    emit_progress(71, '读取偏度标记组', '核验标记组、网格数量和当前几何身份')
     marker, observations, digest=_read_warning_elements(state)
     if not observations and digest.startswith('analysis_limit:'):
         amount=int(digest.split(':')[1])
@@ -396,13 +527,16 @@ def preview_warning_refinement(state):
                  'geometry_fingerprint':state['fingerprint'],'mesh_elements':int(Model.Mesh.Elements),
                  'warning_count':amount,'covered_count':0,'uncovered_count':amount,
                  'range_min':marker.get('range_min'),'range_max':marker.get('range_max'),
+                 'job_id':utext(job.get('job_id','')),
                  'group_count':0,'clusters':[],'total_cell_proxy':0,
                  'notes':u'选中单元超过 ACT 一次性安全读取上限；建议缩小范围或将范围分段分批筛选（未修改原网格）。',
                  'rejected_groups':[{'element_ids':[], 'count':amount,'reason':'analysis_element_count_limit', 'limit':MAX_ANALYSIS_ELEMENTS}]}
         proposal['plan_id']=hashlib.sha256((utext(state['fingerprint'])+':'+digest).encode('utf-8')).hexdigest()[:20]
         write(_warning_path(_WARNING_PLAN),proposal)
         return proposal
+    emit_progress(79, '核对已有 Sizing', '检查现有局部尺寸，避免覆盖更细的手工控制')
     caps=_existing_body_size_caps(state)
+    emit_progress(86, '空间分簇与预算审核', '按几何 Body、邻接关系和影响半径生成独立候选')
     rejected=list(marker.get('_element_rejections',[]))
     groups,proxy=_hotspot_candidates(observations,caps,rejected,state['fingerprint'])
     # No safe candidate is NOT a failed task. Record why, without creating Sizing.
@@ -410,6 +544,7 @@ def preview_warning_refinement(state):
     covered=set(i for x in groups for i in x['element_ids'])
     proposal={'schema_version':1,'status':('ready' if groups else 'no_safe_candidates'),'project':state['project'],
               'geometry_fingerprint':state['fingerprint'],
+              'job_id':utext(job.get('job_id','')),
               'mesh_elements':int(Model.Mesh.Elements),'warning_digest':digest,
               'warning_count':len(observations)+len(marker.get('_element_rejections',[])),
               'range_min':marker.get('range_min'),'range_max':marker.get('range_max'),'group_count':len(groups),'batch_count':(len(groups)+MAX_BATCH_SPHERES-1)//MAX_BATCH_SPHERES,
@@ -420,6 +555,7 @@ def preview_warning_refinement(state):
               'skewness_threshold':marker.get('skewness_threshold'),
               'notes':u'完整列出所有可分析局部候选（不按 24 组截断）。发布时才审核选中集合的累计预算，每批最多 6 个；真实偏度不可用则明确显示未知；晶圆间净空仍需逐候选人工确认。'
              }
+    emit_progress(94, '保存局部方案', '候选 %d 组；正在写入本任务专属方案文件' % len(groups))
     proposal['plan_id']=hashlib.sha256(json.dumps(
         [proposal['project'],proposal['geometry_fingerprint'],proposal['warning_digest'],groups],
         sort_keys=True,ensure_ascii=True).encode('utf-8')).hexdigest()[:16]
@@ -472,40 +608,48 @@ def _set_origin_mm(cs, xyz):
 
 
 def _owned_live_controls(owned, existing):
-    """Resolve exact Name+ObjectId ownership, detect manual edits before reuse."""
+    """Resolve exact Name+ObjectId ownership and verify all live properties.
+
+    Existing controls are never resized or moved by incremental publication;
+    they are only validated and included in the cumulative resource budget.
+    """
     recorded=owned.get('controls',[])
     if not recorded:
-        return None
-    live=dict(((utext(x.Name),int(x.ObjectId)),x) for x in existing)
-    if set(live)!=set((x['name'],int(x['object_id'])) for x in recorded):
+        if existing:
+            raise RuntimeError(u'当前存在 AutoMesh_QR Sizing，但没有完整接管记录；拒绝叠加发布。')
+        return []
+    live_list=list(existing)
+    live=dict(((utext(x.Name),int(x.ObjectId)),x) for x in live_list)
+    if len(live)!=len(live_list) or set(live)!=set((x['name'],int(x['object_id'])) for x in recorded):
         raise RuntimeError(u'警告区已有控制的名称/对象 ID 与发布记录不一致，可能被人工修改。')
     cs_live=dict(((utext(x.Name),int(x.ObjectId)),x) for x in Model.CoordinateSystems.Children)
     verified=[]
     for item in recorded:
         control=live[(item['name'],int(item['object_id']))]
+        if not _is_sizing(control) or utext(getattr(control, 'Type', '')) != utext(SizingType.SphereOfInfluence):
+            raise RuntimeError(u'旧自建 Sizing 类型已被人工修改，拒绝继续发布：' + item['name'])
         if _is_control_suppressed(control):
-            raise RuntimeError(u'旧自建 Sizing 已被人工停用，不能直接复用。')
+            raise RuntimeError(u'旧自建 Sizing 已被人工停用，不能安全累计；请先人工核对：' + item['name'])
         key=(item['coordinate_system'],int(item['cs_object_id']))
         cs=cs_live.get(key)
         if cs is None:
-            raise RuntimeError(u'旧坐标系不存在或其对象 ID 已变化，不能自动复用。')
+            raise RuntimeError(u'旧坐标系不存在或其对象 ID 已变化，不能自动接管。')
         if set(_effective_sizing_ids(control))!={int(item['body_id'])}:
-            raise RuntimeError(u'旧 Sizing 作用域已被人工修改，拒绝覆盖。')
+            raise RuntimeError(u'旧 Sizing 作用域已被人工修改，拒绝继续发布。')
         if abs(_read_control_mm(control)-float(item['size_mm']))>0.001:
-            raise RuntimeError(u'旧 Sizing 尺寸已被人工修改，拒绝覆盖。')
+            raise RuntimeError(u'旧 Sizing 尺寸已被人工修改，拒绝继续发布。')
         if abs(_length_mm(control.SphereRadius)-float(item['radius_mm']))>0.001:
-            raise RuntimeError(u'旧 Sizing 半径已被人工修改，拒绝覆盖。')
+            raise RuntimeError(u'旧 Sizing 半径已被人工修改，拒绝继续发布。')
         if not hasattr(control,'SphereCenter') or int(control.SphereCenter.ObjectId)!=int(cs.ObjectId):
             raise RuntimeError(u'旧 Sizing 球心坐标系已被人工调整。')
         coords=_origin_coords_mm(cs)
         expected=item.get('centre_mm')
         if not isinstance(expected,list) or len(expected)!=3:
-            raise RuntimeError(u'旧版没有记录球心审计数据，无法安全复用；请人工核对。')
+            raise RuntimeError(u'旧版没有记录球心审计数据，无法安全接管；请人工核对。')
         if any(abs(float(coords[i])-float(expected[i]))>0.001 for i in range(3)):
-            raise RuntimeError(u'旧坐标系原点已被人工修改，拒绝自动覆盖。')
+            raise RuntimeError(u'旧坐标系原点已被人工修改，拒绝继续发布。')
         verified.append((control,cs))
     return verified
-
 
 def _reuse_owned_controls(owned, live_controls, groups, plan, managed_file, state):
     """Atomic best-effort update of documented AutoMesh-owned controls.
@@ -600,24 +744,28 @@ def _control_proxy(control):
     return (4.0/3.0)*math.pi*(r/h)**3
 
 
-def _candidate_record(control, cs, candidate):
+def _candidate_record(control, cs, candidate, plan, batch_number):
     return {'candidate_id':candidate['candidate_id'],
             'name':utext(control.Name),'object_id':int(control.ObjectId),
             'coordinate_system':utext(cs.Name),'cs_object_id':int(cs.ObjectId),
             'body_id':candidate['body_id'], 'radius_mm':candidate['radius_mm'],
             'size_mm':candidate['element_size_mm'],'centre_mm':candidate['centre_mm'],
-            'cell_budget_proxy':candidate['cell_budget_proxy']}
-
+            'cell_budget_proxy':candidate['cell_budget_proxy'],
+            'source_plan_id':plan.get('plan_id'),
+            'source_mesh_elements':int(plan.get('mesh_elements', 0)),
+            'batch_number':int(batch_number), 'published_at':time.time()}
 
 def _migrate_legacy_manifest(owned, verified, current_candidates):
-    """Preserve R7.9 controls; adopt only exact verified 1:1 matching scopes.
+    """Bind only exact legacy matches; keep unmatched prior-round controls.
 
-    Old controls are never deleted, renamed, or modified. If any cannot be
-    matched safely, abort incremental publication instead of duplicating it.
+    A remesh changes element IDs and candidate IDs. A live, verified old Sizing
+    therefore remains valid history even when it is absent from the new plan.
+    Its actual ACT geometry is checked by _owned_live_controls and it remains
+    part of the cumulative budget and duplicate-sphere checks.
     """
     changed=False
-    used=set()
-    for index, old in enumerate(owned.get('controls',[])):
+    used=set(x.get('candidate_id') for x in owned.get('controls',[]) if x.get('candidate_id'))
+    for old in owned.get('controls',[]):
         if old.get('candidate_id'):
             continue
         matches=[]
@@ -629,37 +777,35 @@ def _migrate_legacy_manifest(owned, verified, current_candidates):
             origin=old.get('centre_mm') or []
             if len(origin)!=3 or any(abs(float(origin[k])-float(c['centre_mm'][k]))>0.001 for k in range(3)):continue
             matches.append(c)
-        if len(matches)!=1:
-            raise RuntimeError(u'已有旧版 AutoMesh_QR_ Sizing 未能唯一匹配当前候选，禁止自动叠加；请人工核对旧控制。')
-        old['candidate_id']=matches[0]['candidate_id']
-        old['cell_budget_proxy']=matches[0]['cell_budget_proxy']
-        used.add(old['candidate_id'])
-        changed=True
-    if changed:owned['schema_version']=2
+        if len(matches)==1:
+            old['candidate_id']=matches[0]['candidate_id']
+            old['cell_budget_proxy']=matches[0]['cell_budget_proxy']
+            used.add(old['candidate_id'])
+            changed=True
+    if changed:owned['schema_version']=3
     return changed
 
-
 def _verify_published_geometry(owner, candidates):
-    """Never reuse stale Sizing geometry after a new plan/mesh changed.
+    """Verify same-round ID matches; retain unmatched prior-round controls.
 
-    A persistent candidate ID is intentionally independent of sort order. It
-    cannot, on its own, establish that the sphere's position still matches the
-    newly analyzed candidate or that a prior candidate is still applicable.
+    Candidate IDs include marked mesh element IDs. After remeshing, new element
+    IDs produce new candidate IDs. Old Sizing validity is established by
+    _owned_live_controls against live ACT objects, not by membership in the
+    current mesh's candidate list.
     """
     index=dict((c['candidate_id'],c) for c in candidates)
     for old in owner.get('controls',[]):
         ident=old.get('candidate_id')
-        current=index.get(ident)
+        current=index.get(ident) if ident else None
         if current is None:
-            raise RuntimeError(u'已发布的候选不再属于当前分簇列表；网格或几何可能变化，禁止与旧 Sizing 自动叠加。')
+            continue
         if int(old['body_id']) != int(current['body_id']):
-            raise RuntimeError(u'已发布候选的几何 Body 与新方案不一致。')
+            raise RuntimeError(u'同一候选 ID 对应的几何 Body 已变化，拒绝重复或覆盖 Sizing。')
         if abs(float(old['radius_mm'])-float(current['radius_mm']))>0.001 or abs(float(old['size_mm'])-float(current['element_size_mm']))>0.001:
-            raise RuntimeError(u'已发布候选尺寸/半径与新方案不一致，需要重新审核。')
+            raise RuntimeError(u'已发布 Sizing 对应的同一候选 ID，其尺寸/半径与当前方案不一致；几何位置可能变化，拒绝叠加发布。')
         old_coords=old.get('centre_mm') or []
         if len(old_coords)!=3 or any(abs(float(old_coords[k])-float(current['centre_mm'][k]))>0.001 for k in range(3)):
-            raise RuntimeError(u'已发布候选球心与当前网格分析结果不同，拒绝重复或叠加 Sizing。')
-
+            raise RuntimeError(u'同一候选 ID 的球心与当前方案不同，拒绝重复或覆盖 Sizing。')
 
 def _reject_near_duplicate_spheres(chosen, old_controls):
     """Protect against very close same-body spheres that are likely redundant.
@@ -717,17 +863,14 @@ def publish_warning_refinement(state):
         if c['body_id'] not in valid or not (0.5<=c['element_size_mm']<=5.0) or c['radius_mm']>MAX_RADIUS_MM:
             raise RuntimeError(u'候选几何、半径或单元尺寸未通过安全复核。')
     managed_file=_warning_path(_WARNING_MANAGED)
-    owner=read(managed_file) if os.path.isfile(managed_file) else {}
-    if owner.get('controls') and (owner.get('project')!=state['project'] or owner.get('fingerprint')!=state['fingerprint']):
-        raise RuntimeError(u'旧警告区控制属于其他工程/几何，禁止叠加。')
-    existing=[x for x in Model.Mesh.Children if utext(x.Name).startswith('AutoMesh_QR_')]
-    live=[]
+    owner=_current_warning_owner(state)
+    existing=_live_warning_qr_controls()
+    live=_owned_live_controls(owner,existing)
     if existing:
-        live=_owned_live_controls(owner,existing)  # validates all original properties
         _migrate_legacy_manifest(owner,live,all_candidates)
         _verify_published_geometry(owner,all_candidates)
     elif owner.get('controls'):
-        raise RuntimeError(u'警告区发布清单存在但原 Sizing 已不在模型树中，禁止忽略历史记录。')
+        raise RuntimeError(u'警告区发布清单存在但原 Sizing 已不在当前模型树中，禁止忽略历史记录。')
     # Abandoned AutoMesh coordinate systems are treated as manual-recovery
     # evidence; never delete them automatically.
     known_cs=set((e.get('coordinate_system'),int(e.get('cs_object_id',-1))) for e in owner.get('controls',[]))
@@ -750,10 +893,28 @@ def publish_warning_refinement(state):
                      'status':'preflight_ok','mesh_elements':int(Model.Mesh.Elements)})
     # Mutation begins only after all constraints and filesystem checks pass.
     if not owner:
-        owner={'schema_version':2,'project':state['project'],'fingerprint':state['fingerprint'],
-               'baseline_mesh_elements':int(Model.Mesh.Elements),'controls':[]}
-    owner['schema_version']=2
+        owner={'schema_version':3,'project':state['project'],'fingerprint':state['fingerprint'],
+               'baseline_mesh_elements':int(Model.Mesh.Elements),'controls':[],'rounds':[]}
+    owner['schema_version']=3
+    owner['project']=state['project']
+    owner['fingerprint']=state['fingerprint']
     owner['plan_id']=plan['plan_id']
+    owner['last_mesh_elements']=int(Model.Mesh.Elements)
+    rounds=list(owner.get('rounds',[]))
+    round_entry=None
+    for entry in rounds:
+        if entry.get('plan_id')==plan['plan_id']:
+            round_entry=entry
+            break
+    if round_entry is None:
+        current_plan_ids=set(x['candidate_id'] for x in all_candidates)
+        prior_current_ids=sorted(set(x.get('candidate_id') for x in owner.get('controls',[])
+                                     if x.get('candidate_id') in current_plan_ids))
+        round_entry={'plan_id':plan['plan_id'],'mesh_elements':int(Model.Mesh.Elements),
+                     'published_candidate_ids':prior_current_ids,'published_count':len(prior_current_ids),
+                     'created_at':time.time(),'continued_from_legacy_record':bool(prior_current_ids)}
+        rounds.append(round_entry)
+    owner['rounds']=rounds
     previous=len(owner['controls'])
     total_batches=(len(chosen)+MAX_BATCH_SPHERES-1)//MAX_BATCH_SPHERES
     for batch_start in range(0,len(chosen),MAX_BATCH_SPHERES):
@@ -794,11 +955,23 @@ def publish_warning_refinement(state):
                     raise RuntimeError(u'球形控制半径回读失败。')
                 if any(abs(x-y)>0.001 for x,y in zip(_origin_coords_mm(cs),c['centre_mm'])):
                     raise RuntimeError(u'球心坐标回读失败。')
-                batch_entries.append(_candidate_record(sizing,cs,c))
+                batch_entries.append(_candidate_record(sizing,cs,c,plan,batch_no))
             # Persist the entire committed ledger AFTER ACT verifies every
             # object in this batch; earlier batches remain traceable on error.
             amended=dict(owner)
             amended['controls']=owner['controls']+batch_entries
+            amended_rounds=[]
+            for item in owner.get('rounds',[]):
+                item_copy=dict(item)
+                if item_copy.get('plan_id')==plan['plan_id']:
+                    prior_ids=list(item_copy.get('published_candidate_ids',[]))
+                    prior_ids.extend(x['candidate_id'] for x in batch_entries)
+                    item_copy['published_candidate_ids']=prior_ids
+                    item_copy['published_count']=len(prior_ids)
+                    item_copy['updated_at']=time.time()
+                amended_rounds.append(item_copy)
+            amended['rounds']=amended_rounds
+            amended['updated_at']=time.time()
             write(managed_file,amended)
             owner=amended
         except Exception as original_error:
@@ -817,9 +990,27 @@ def publish_warning_refinement(state):
                 raise RuntimeError(u'批次 %d 发布失败且回退不完整，已保留现场，禁止重试；请核查 Meshing。原因: %s' % (batch_no,utext(original_error)))
             raise RuntimeError(u'第 %d 批发布失败，已回滚本批；此前成功的 %d 个候选保留记录。原因: %s' %
                                (batch_no,len(owner['controls'])-previous,utext(original_error)))
+    current_plan_ids=set(x['candidate_id'] for x in all_candidates)
+    current_round_published=set(x.get('candidate_id') for x in owner.get('controls',[])
+                                 if x.get('candidate_id') in current_plan_ids)
+    remaining=sum(1 for x in all_candidates if x['candidate_id'] not in current_round_published)
+    snapshot_refresh_warning=''
+    try:
+        state['mesh'] = state.get('mesh') or {}
+        for field in ('Elements','Nodes','ElementSize','MaximumSize','GrowthRate'):
+            try: state['mesh'][field] = utext(getattr(Model.Mesh, field))
+            except Exception: pass
+        state.update(live_control_inventory())
+        write(SNAPSHOT_FILE, state)
+    except Exception as snapshot_error:
+        # The Sizing ledger is already committed. A cache-refresh failure must
+        # not report the ACT publication as failed or invite a duplicate retry.
+        snapshot_refresh_warning=u'Sizing 已提交，但本地只读快照刷新失败；下一次只读任务会重新读取：'+utext(snapshot_error)
     return {'status':'published','plan_id':plan['plan_id'],
             'sizing_count':len(chosen),'batch_count':total_batches,
             'candidate_ids':chosen_ids,'controls':owner['controls'][-len(chosen):],
-            'remaining_count':len(all_candidates)-len(owner['controls']),
-            'mesh_generated':False,'mesh_cleared':False,
-            'next_action':u'未勾选候选保留在审核列表。重新生成网格须用户另行授权，重划后重新分析偏度。'}
+            'existing_control_count':len(owner.get('controls',[]))-len(chosen),
+            'cumulative_control_count':len(owner.get('controls',[])),
+            'remaining_count':remaining,'mesh_generated':False,'mesh_cleared':False,
+            'snapshot_refresh_warning':snapshot_refresh_warning,
+            'next_action':u'本轮未勾选候选仍可继续审核；如已重新生成网格，请重新标记偏度并生成新方案。历史 Sizing 会保留、核验并计入累计预算。'}
