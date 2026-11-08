@@ -1,1 +1,1 @@
-Retry R8.0.4 extraction; use the repository's already-published release note if ZIP omits it.
+Retry after guarding the release-note same-file copy case.
