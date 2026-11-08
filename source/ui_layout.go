@@ -45,8 +45,6 @@ func plannedControls(width int) map[string]uiBox {
 	cw := uiWidth(width)
 	x := contentX
 	gap := 12
-	col := (cw - 2*gap) / 3
-	x3 := x + 2*(col+gap)
 	left := cw * 63 / 100
 	listW, rightX, rightW := fineColumns(width)
 	return map[string]uiBox{
@@ -177,7 +175,6 @@ func criticalLabels(width int) []pageLabel {
 		{"设置页说明", 5, uiBox{x + 16, 130, cw - 32, 26}},
 		{"导出填写提示", 5, uiBox{x + 30, 257, cw - 60, 27}},
 		{"导出后说明", 5, uiBox{x + 350, 369, cw - 380, 36}},
-		{"尺寸卡标题", 0, uiBox{x3 + 20, 299, col - 40, 24}},
 	}
 }
 
