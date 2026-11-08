@@ -1,0 +1,61 @@
+name: AutoMesh R8.0.4 UI regression
+
+on:
+  push:
+    branches:
+      - "ui-redesign-*"
+    paths:
+      - "source/**"
+      - ".github/workflows/ui-regression.yml"
+  pull_request:
+    paths:
+      - "source/**"
+      - ".github/workflows/ui-regression.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-regression:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: source/go.mod
+          cache: true
+          cache-dependency-path: source/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Go regression tests
+        working-directory: source
+        run: go test ./...
+
+      - name: Python regression tests
+        working-directory: source
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pytest -q
+
+      - name: Build Windows desktop executable
+        working-directory: source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -trimpath -ldflags "-H=windowsgui" -o dist/AutoMesh.exe .
+
+      - name: Upload test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoMesh-R8.0.4-ui-redesign-${{ github.sha }}
+          path: source/dist/AutoMesh.exe
+          if-no-files-found: error
