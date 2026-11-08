@@ -23,12 +23,12 @@ func (a *state) updateActionStates() {
 	available := workflowAvailability{Ready: a.ready, Busy: a.busy, Connected: a.connected && a.port > 0 && len(a.systems) > 0, Ack: ack, Selected: selected,
 		Scanned: scanned, HasMarker: marker, HasPreview: reviewed, HasReport: hasReport, HasNamed: scanned && len(a.selectedNamed) > 0, SkewRangeValid: rangeOK,
 		CanGenerate: scanned && (a.preparedSystem == a.systems[selection] || hasVerifiedManagedManifest(a.ws.Dir, a.snapshot))}
-	for _, name := range []string{"auto", "link", "scan", "qualitycheck", "diagnose", "mark", "markwarning", "markhighskew", "warningplan", "warningview", "warningpublish", "finenames", "fineprepare", "fineglobalreview", "finesuggest", "finechinese", "finebulkapply", "finegroupsave", "finegenerate", "exportbutton", "taskstatus", "taskstatusconn", "htmlreport", "report", "open", "tasklog", "initretry", "clearlease", "storagechange"} {
+	for _, name := range []string{"auto", "link", "scan", "qualitycheck", "diagnose", "mark", "markwarning", "markhighskew", "warningplan", "warningview", "warningpublish", "finenames", "fineprepare", "fineglobalreview", "finesuggest", "finechinese", "finebulkapply", "finegroupsave", "finegenerate", "exportbutton", "taskstatus", "analysisExport", "htmlreport", "report", "open", "tasklog", "initretry", "clearlease", "storagechange"} {
 		enabled(a.ctl(name), available.Allow(name))
 	}
 	// Reading, selecting and editing group data while a background task is
 	// active can result in stale settings. Let users still navigate/report.
-	for _, name := range []string{"finegroups", "finegroupactive", "finegroupmm", "finebulkmm", "finefilter", "finerefresh"} {
+	for _, name := range []string{"finegroups", "finegroupactive", "finegroupmm", "finebulkmm", "finefilter"} {
 		enabled(a.ctl(name), available.Scanned && !a.busy)
 	}
 	// Freeze inputs while an ACT job is active: the Worker uses a submitted
@@ -37,12 +37,15 @@ func (a *state) updateActionStates() {
 	for _, name := range []string{"size", "global", "port", "export", "skewlow", "skewhigh", "ack", "systems"} {
 		enabled(a.ctl(name), !a.busy)
 	}
-	if a.page == 5 {
+	if a.page == 6 {
 		for _, key := range []string{"reviewlist", "reviewrisk", "reviewclear", "reviewback", "reviewdetails"} {
 			enabled(a.ctl(key), !a.busy)
 		}
 		ids, budget := a.selectedCandidates()
 		enabled(a.ctl("reviewconfirm"), !a.busy && a.reviewPublishBlockedReason == "" && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
+	}
+	enabled(a.ctl("analysisExport"), len(a.qualityHistory) > 0 && !a.busy)
+	if false {
 	}
 	refresh()
 }
