@@ -80,7 +80,14 @@ func TestR79SkewRangeValidationAndButtonGating(t *testing.T) {
 			t.Errorf("accepted bad interval %q", pair)
 		}
 	}
+	preScan := workflowAvailability{Ready: true, Connected: true, Ack: true, Selected: true}
+	if preScan.Allow("qualitycheck") || preScan.Allow("mark") || preScan.Allow("diagnose") {
+		t.Fatal("quality operations must wait for a verified geometry scan")
+	}
 	s := workflowAvailability{Ready: true, Connected: true, Ack: true, Selected: true, Scanned: true}
+	if !s.Allow("qualitycheck") {
+		t.Fatal("quality check should be enabled after a verified scan")
+	}
 	if s.Allow("markhighskew") {
 		t.Fatal("invalid range allowed")
 	}
