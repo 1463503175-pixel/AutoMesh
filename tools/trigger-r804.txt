@@ -1,1 +1,1 @@
-Trigger extraction and publication of the R8.0.4 ZIP already uploaded to the repository root. This file can be removed after the workflow completes.
+Trigger R8.0.4 extraction after workflow layout compatibility update. Run at 2026-11-08 15:38 local project time.
