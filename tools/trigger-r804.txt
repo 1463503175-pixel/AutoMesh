@@ -1,1 +1,1 @@
-Trigger R8.0.4 extraction after workflow layout compatibility update. Run at 2026-11-08 15:38 local project time.
+Retry R8.0.4 extraction; use the repository's already-published release note if ZIP omits it.
