@@ -29,7 +29,8 @@ func (s workflowAvailability) Allow(action string) bool {
 	case "scan":
 		return canRead
 	case "qualitycheck", "diagnose", "mark", "markwarning":
-		return canRead
+		// These operations consume a verified scan snapshot, not just a live connection.
+		return canScan
 	case "markhighskew":
 		return canScan && s.SkewRangeValid
 	case "warningplan":
@@ -48,7 +49,7 @@ func (s workflowAvailability) Allow(action string) bool {
 		return canScan && s.CanGenerate
 	case "exportbutton":
 		return canScan
-	case "taskstatus", "taskstatusconn", "htmlreport", "report", "open", "tasklog":
+	case "taskstatus", "htmlreport", "report", "open", "tasklog":
 		return true
 	case "initretry":
 		return !s.Busy
