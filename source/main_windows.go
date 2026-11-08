@@ -100,7 +100,8 @@ const (
 	ID_NAV_CONNECT         = 101
 	ID_NAV_FINE            = 102
 	ID_NAV_REPORT          = 103
-	ID_NAV_SETTINGS        = 104
+	ID_NAV_ANALYSIS        = 104
+	ID_NAV_SETTINGS        = 105
 	ID_AUTO                = 110
 	ID_SCAN                = 111
 	ID_CONNECT             = 112
@@ -134,6 +135,9 @@ const (
 	ID_INIT_RETRY          = 140
 	ID_TASK_STOP           = 141
 	ID_MARK_HIGH_SKEW      = 142
+	ID_ANALYSIS_EXPORT     = 147
+	ID_ANALYSIS_BEFORE     = 148
+	ID_ANALYSIS_AFTER      = 149
 )
 
 var (
@@ -511,6 +515,7 @@ type state struct {
 	qualityCheckedAt          time.Time
 	qualityStale              bool
 	qualityFingerprint        string
+	qualityHistory            []QualitySnapshot
 	activeExport              string
 	activeApplyGlobal         bool
 	scannedSystem             string
@@ -628,11 +633,14 @@ func (a *state) build() {
 	a.put("navconn", button("连接工程", 16, 151, 168, 43, ID_NAV_CONNECT))
 	a.put("navfine", button("局部细化", 16, 198, 168, 43, ID_NAV_FINE))
 	a.put("navreport", button("质量报告", 16, 245, 168, 43, ID_NAV_REPORT))
-	a.put("navsettings", button("更多设置", 16, 292, 168, 43, ID_NAV_SETTINGS))
+	a.put("navanalysis", button("网格质量分析", 16, 292, 168, 43, ID_NAV_ANALYSIS))
+	a.put("navsettings", button("更多设置", 16, 339, 168, 43, ID_NAV_SETTINGS))
 	a.put("auto", button("连接 Workbench", 245, 181, 300, 43, ID_AUTO))
-	a.put("scan", button("只读扫描", 248, 586, 132, 36, ID_SCAN))
-	a.put("report", button("查看报告", 392, 586, 132, 36, ID_REPORT))
-	a.put("open", button("打开文件夹", 537, 586, 148, 36, ID_OPEN))
+	a.put("scan", button("同步工程", 740, 14, 104, 34, ID_SCAN))
+	a.put("qualitycheck", button("更新质量", 852, 14, 104, 34, ID_QUALITY_CHECK))
+	a.put("taskstatus", button("任务中心", 964, 14, 130, 34, ID_TASK_STATUS))
+	a.put("report", button("查看报告", 248, 586, 132, 36, ID_REPORT))
+	a.put("open", button("打开文件夹", 392, 586, 165, 36, ID_OPEN))
 	a.put("port", edit("自动", 250, 306, 180, 38))
 	if old, err := readJSON[map[string]any](a.ws.path("last_connection.json")); err == nil {
 		if raw, ok := old["port"].(float64); ok && raw >= 1 && raw <= 65535 {
@@ -642,11 +650,10 @@ func (a *state) build() {
 	font(a.ctl("port"), 16, 450)
 	a.put("link", button("自动查找并连接", 447, 306, 220, 38, ID_CONNECT))
 	a.put("initretry", button("重新检查初始化", 700, 306, 180, 38, ID_INIT_RETRY))
-	a.put("taskstatusconn", button("检查任务状态", 890, 306, 175, 38, ID_TASK_STATUS))
 	a.put("systems", combo(250, 445, 420, 190))
 	a.put("ack", checkbox("我已在 Workbench 中打开目标 Meshing 编辑器", 250, 507, 540, 32))
-	a.put("size", edit("12", 980, 347, 130, 34))
-	a.put("global", checkbox("使用参考尺寸覆盖全局（默认关闭）", 937, 393, 270, 32))
+	a.put("size", edit("12", 370, 160, 130, 34))
+	a.put("global", checkbox("使用参考尺寸覆盖全局（默认关闭）", 520, 160, 330, 30))
 	send(a.ctl("global"), BM_SETCHECK, 0, 0)
 	for _, spec := range []struct{ key, label string }{
 		{"gap", "细小相似面"}, {"hole", "重复面积面组"}, {"port", "已有人工命名面"}, {"curve", "其他较大面（默认关闭）"},
@@ -661,8 +668,7 @@ func (a *state) build() {
 	a.put("fineglobalreview", button("核对全局参数", 895, 641, 155, 34, ID_FINE_GLOBAL_REVIEW))
 	a.put("finegroups", control("LISTBOX", "", WS_TABSTOP|WS_BORDER|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT, 250, 307, 510, 232, ID_FINE_GROUP_SELECT))
 	a.put("finefilter", button("只看 AutoMesh", 250, 266, 165, 30, ID_FINE_FILTER))
-	a.put("finerefresh", button("刷新命名", 428, 266, 185, 30, ID_FINE_REFRESH))
-	a.put("finechinese", button("旧组中文化", 625, 266, 136, 30, ID_CHINESE_NAMES))
+	a.put("finechinese", button("旧组中文化", 430, 266, 145, 30, ID_CHINESE_NAMES))
 	a.put("finegroupactive", checkbox("启用此命名组", 800, 403, 170, 30))
 	a.put("finegroupmm", edit("", 800, 460, 130, 34))
 	a.put("finegroupsave", button("保存单项尺寸", 800, 508, 170, 34, ID_FINE_GROUP_SAVE))
@@ -677,7 +683,6 @@ func (a *state) build() {
 	a.put("storagechange", button("更改数据存储目录", 250, 525, 230, 35, ID_STORAGE_CHANGE))
 	a.put("htmlreport", button("详细质量报告", 252, 591, 220, 38, ID_HTML_REPORT))
 	a.put("diagnose", button("风险抽样诊断", 524, 591, 220, 38, ID_DIAGNOSE))
-	a.put("qualitycheck", button("只读质量检查", 250, 570, 216, 33, ID_QUALITY_CHECK))
 	a.put("mark", button("标记失败单元", 776, 591, 220, 38, ID_MARK))
 	a.put("markwarning", button("按默认警告标记", 1005, 580, 195, 38, ID_MARK_WARNING))
 	a.put("skewlow", edit("0.90", 360, 657, 72, 30))
@@ -695,7 +700,11 @@ func (a *state) build() {
 	a.put("reviewdetails", button("查看全部影响域", 582, 652, 170, 34, ID_REVIEW_DETAILS))
 	a.put("reviewconfirm", button("审核所选并发布", 768, 652, 220, 34, ID_REVIEW_CONFIRM))
 	enabled(a.ctl("reviewconfirm"), false)
-	a.put("taskstatus", button("任务状态", 810, 612, 190, 34, ID_TASK_STATUS))
+	a.put("analysisBefore", control("COMBOBOX", "", WS_TABSTOP|CBS_DROPDOWNLIST|WS_VSCROLL, 250, 165, 240, 34, ID_ANALYSIS_BEFORE))
+	a.put("analysisAfter", control("COMBOBOX", "", WS_TABSTOP|CBS_DROPDOWNLIST|WS_VSCROLL, 505, 165, 240, 34, ID_ANALYSIS_AFTER))
+	a.put("analysisExport", button("导出质量 CSV", 930, 165, 150, 34, ID_ANALYSIS_EXPORT))
+	font(a.ctl("analysisBefore"), 13, 500)
+	font(a.ctl("analysisAfter"), 13, 500)
 	if b, err := os.ReadFile(a.ws.path("skew_range_settings.json")); err == nil {
 		var saved struct {
 			Low  float64 `json:"low"`
@@ -708,45 +717,50 @@ func (a *state) build() {
 	}
 	a.put("taskstop", button("请求停止任务", 20, 690, 165, 30, ID_TASK_STOP))
 	visible(a.ctl("taskstop"), false)
+	a.populateQualityHistoryControls()
 	a.switchPage(0)
 }
 func (a *state) switchPage(page int) {
 	begin := time.Now()
 	a.page = page
-	a.scrollY = 0 // Every page opens at its first step, not a stale scrolled position.
+	a.scrollY = 0
 	a.scrollX = 0
-	home, conn, fine, settings := page == 0, page == 1, page == 2, page == 4
-	for _, n := range []string{"auto", "scan", "report", "open", "size", "global"} {
+	home, conn, fine, analysis, settings := page == 0, page == 1, page == 2, page == 4, page == 5
+
+	// Global read-only actions are shared by every page. Page navigation never scans.
+	for _, n := range []string{"scan", "qualitycheck", "taskstatus"} {
+		visible(a.ctl(n), true)
+	}
+	for _, n := range []string{"auto", "report", "open"} {
 		visible(a.ctl(n), home)
 	}
-	for _, n := range []string{"port", "link", "initretry", "taskstatusconn", "systems", "ack"} {
+	for _, n := range []string{"size", "global"} {
+		visible(a.ctl(n), fine)
+	}
+	for _, n := range []string{"port", "link", "initretry", "systems", "ack"} {
 		visible(a.ctl(n), conn)
 	}
-	visible(a.ctl("export"), settings)
-	visible(a.ctl("exportbutton"), settings)
-	visible(a.ctl("clearlease"), settings)
-	visible(a.ctl("tasklog"), settings)
-	visible(a.ctl("storagechange"), settings)
+	for _, n := range []string{"export", "exportbutton", "clearlease", "tasklog", "storagechange"} {
+		visible(a.ctl(n), settings)
+	}
+	for _, n := range []string{"analysisBefore", "analysisAfter", "analysisExport"} {
+		visible(a.ctl(n), analysis)
+	}
 	for _, k := range []string{"gap", "hole", "port", "curve"} {
-		// Previous four-category refinement UI is deprecated; use existing NS only.
 		visible(a.ctl("fine"+k), false)
 		visible(a.ctl("fine"+k+"mm"), false)
 	}
-	visible(a.ctl("finenames"), fine)
-	visible(a.ctl("fineprepare"), fine)
-	visible(a.ctl("finegenerate"), fine)
-	visible(a.ctl("fineglobalreview"), fine)
-	for _, k := range []string{"finegroups", "finegroupactive", "finegroupmm", "finegroupsave", "finefilter", "finerefresh", "finechinese", "finesuggest", "finebulkmm", "finebulkapply"} {
-		visible(a.ctl(k), fine)
+	for _, n := range []string{"finenames", "fineprepare", "finegenerate", "fineglobalreview", "finegroups", "finegroupactive", "finegroupmm", "finegroupsave", "finefilter", "finechinese", "finesuggest", "finebulkmm", "finebulkapply"} {
+		visible(a.ctl(n), fine)
 	}
-	for _, n := range []string{"htmlreport", "diagnose", "mark", "markwarning", "markhighskew", "skewlow", "skewhigh", "qualitycheck", "warningplan", "warningview", "warningpublish", "taskstatus"} {
+	for _, n := range []string{"htmlreport", "diagnose", "mark", "markwarning", "markhighskew", "skewlow", "skewhigh", "warningplan", "warningview", "warningpublish"} {
 		visible(a.ctl(n), page == 3)
 	}
 	for _, n := range []string{"reviewlist", "reviewrisk", "reviewback", "reviewclear", "reviewdetails", "reviewconfirm"} {
-		visible(a.ctl(n), page == 5)
+		visible(a.ctl(n), page == 6)
 	}
 	visible(a.ctl("taskstop"), a.busy || a.hasPendingStopTarget())
-	a.layout() // Reposition child HWNDs when a new page resets the scroll offset.
+	a.layout()
 	a.updateActionStates()
 	if elapsed := time.Since(begin); elapsed > navigationDurationMax {
 		navigationDurationMax = elapsed
@@ -787,15 +801,15 @@ func (a *state) layout() {
 		if h == 0 {
 			continue
 		}
-		isSidebar := strings.HasPrefix(name, "nav")
+		isPinned := strings.HasPrefix(name, "nav") || name == "scan" || name == "qualitycheck" || name == "taskstatus"
 		y := box.Y
 		x := box.X
-		if !isSidebar {
+		if !isPinned {
 			y -= a.scrollY
 			x -= a.scrollX
 		}
 		repoint(h, x, y, box.W, box.H)
-		if !isSidebar {
+		if !isPinned {
 			clipScrolledControl(h, x, y, box.W, box.H, int(rc.R), int(rc.B))
 		}
 	}
@@ -822,30 +836,32 @@ func (a *state) screen(dc uintptr, w, h int) {
 	solid(dc, 22, 16, 34, 34, cobalt, 12)
 	textAt(dc, "A", 31, 16, 27, 34, 22, 800, white)
 	textAt(dc, "AutoMesh", 66, 13, 230, 38, 22, 700, navy)
-	textAt(dc, "2024 R2  ·  自动网格工作台", 256, 17, 350, 32, 13, 400, slate)
+	textAt(dc, "R8.0.4  ·  自动网格工作台", 256, 17, 240, 32, 13, 450, slate)
 	if a.connected {
-		solid(dc, w-235, 17, 195, 30, greenbg, 16)
-		textAt(dc, "●  已连接 Workbench", w-223, 18, 177, 27, 13, 600, green)
+		solid(dc, w-535, 17, 145, 30, greenbg, 16)
+		textAt(dc, "●  Workbench 已连接", w-527, 18, 132, 27, 11, 600, green)
 	} else {
-		solid(dc, w-218, 17, 180, 30, color(241, 244, 249), 16)
-		textAt(dc, "○  等待连接", w-202, 18, 154, 27, 13, 500, slate)
+		solid(dc, w-535, 17, 145, 30, color(241, 244, 249), 16)
+		textAt(dc, "○  等待连接", w-527, 18, 132, 27, 11, 500, slate)
 	}
 	textAt(dc, "工作流程", 23, 77, 150, 25, 12, 650, slate)
 	if !a.busy {
-		textAt(dc, "下一步", 22, 360, 150, 24, 12, 700, navy)
-		next := "选择网格操作"
+		textAt(dc, "下一步", 22, 415, 150, 24, 12, 700, navy)
+		next := "查看当前工程状态"
 		if !a.connected {
 			next = "连接现有 Workbench"
 		} else if a.snapshot == nil {
-			next = "对当前 Mesh 只读扫描"
+			next = "顶部点击「同步工程」"
 		} else if a.page == 3 {
 			next = "标记 → 预览 → 审核"
+		} else if a.page == 4 {
+			next = "比较历史质量快照"
 		} else {
 			next = "核对设置与质量"
 		}
-		textAt(dc, next, 22, 388, 163, 23, 11, 450, slate)
+		textAt(dc, next, 22, 443, 163, 23, 11, 450, slate)
 		if a.errorText != "" {
-			textAt(dc, "有错误记录 · 详情见设置", 22, 418, 165, 24, 10, 600, warningcolor)
+			textAt(dc, "有错误记录 · 查看任务中心", 22, 473, 165, 24, 10, 600, warningcolor)
 		}
 	}
 	// Always-visible progress, including when the user is on page 2 or 3.
@@ -886,8 +902,10 @@ func (a *state) screen(dc uintptr, w, h int) {
 	case 3:
 		a.drawReport(dc, x, cw)
 	case 4:
-		a.drawSettings(dc, x, cw)
+		a.drawQualityAnalysis(dc, x, cw)
 	case 5:
+		a.drawSettings(dc, x, cw)
+	case 6:
 		a.drawCandidateReview(dc, x, cw)
 	}
 	if saved != 0 {
@@ -897,7 +915,7 @@ func (a *state) screen(dc uintptr, w, h int) {
 func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
 	solid(dc, x, 80, cw, 150, color(239, 246, 255), 20)
 	textAt(dc, "AutoMesh · 自动网格", x+28, 93, cw-55, 39, 25, 740, navy)
-	textAt(dc, "连接现有工程  →  只读扫描  →  审核局部细化  →  确认生成", x+28, 132, cw-60, 27, 14, 450, slate)
+	textAt(dc, "连接现有工程  →  同步数据  →  质量诊断  →  局部细化  →  对比分析", x+28, 132, cw-60, 27, 14, 450, slate)
 	textAt(dc, "不会重新启动 ANSYS，也不会运行 Fluent", x+360, 178, cw-385, 37, 12, 450, slate)
 	gap := 12
 	col := (cw - 2*gap) / 3
@@ -943,10 +961,22 @@ func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
 		textAt(dc, "未列出组  "+printable(ev["candidate_groups_omitted"]), x2+20, y+127, col-35, 25, 13, 500, navy)
 	}
 	x3 := x + 2*(col+gap)
-	textAt(dc, "网格参数", x3+20, y+13, col-36, 27, 16, 700, navy)
+	textAt(dc, "数据状态", x3+20, y+13, col-36, 27, 16, 700, navy)
 	rule(dc, x3+20, y+45, x3+col-20, y+45, lineclr)
-	textAt(dc, "参考尺寸 (mm)", x3+20, y+55, col-40, 24, 13, 500, navy)
-	textAt(dc, "所有尺寸以 mm 输入；全局默认保留原值", x3+20, y+155, col-40, 19, 11, 400, slate)
+	syncState := "工程信息：尚未同步"
+	if a.snapshot != nil {
+		syncState = fmt.Sprintf("工程信息：已同步 · %d 个命名组", len(a.snapshot.Named))
+	}
+	qualityState := "质量快照：尚未检测"
+	if a.qualityResult != nil {
+		qualityState = "质量快照：" + a.qualityCheckedAt.Format("01-02 15:04")
+		if a.qualityStale {
+			qualityState += " · 待更新"
+		}
+	}
+	textAt(dc, shorten(syncState, 32), x3+20, y+57, col-40, 25, 13, 550, navy)
+	textAt(dc, shorten(qualityState, 32), x3+20, y+91, col-40, 25, 12, 500, slate)
+	textAt(dc, fmt.Sprintf("历史质量快照：%d 轮", len(a.qualityHistory)), x3+20, y+126, col-40, 23, 12, 450, slate)
 	y2 := homeLowerY
 	left := cw * 63 / 100
 	right := cw - left - gap
@@ -977,11 +1007,12 @@ func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
 	x4 := x + left + gap
 	textAt(dc, "网格质量", x4+20, y2+10, right-36, 26, 16, 700, navy)
 	rule(dc, x4+20, y2+44, x4+right-20, y2+44, lineclr)
-	quality := asMap(a.report()["quality"])
+	qualityData := a.qualitySummary
+	quality := asMap(qualityData["quality"])
 	skew := asMap(quality["skewness"])
-	textAt(dc, "单元数  "+printable(a.report()["mesh_elements"]), x4+20, y2+52, right-37, 24, 13, 550, navy)
+	textAt(dc, "单元数  "+printable(qualityData["mesh_elements"]), x4+20, y2+52, right-37, 24, 13, 550, navy)
 	textAt(dc, "最大偏度  "+printable(skew["max"]), x4+20, y2+80, right-37, 24, 13, 550, navy)
-	gate := printable(a.report()["quality_gate"])
+	gate := printable(qualityData["quality_gate"])
 	if a.last != nil && a.last.Phase == "diagnose" {
 		gate = "只读诊断"
 	}
@@ -989,8 +1020,12 @@ func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
 		gate = "等待计算"
 	}
 	textAt(dc, "质量状态  "+shorten(gate, 19), x4+20, y2+108, right-37, 24, 12, 500, warningcolor)
-	textAt(dc, "缺少真实质量数据时不显示通过", x4+20, y2+139, right-37, 22, 11, 400, slate)
-	textAt(dc, "建议先扫描并审核局部细化；现有网格不会被覆盖。", x, 645, cw, 22, 11, 400, slate)
+	if a.qualityStale {
+		textAt(dc, "当前质量快照已过期，请使用顶部「更新质量」", x4+20, y2+139, right-37, 22, 11, 500, warningcolor)
+	} else {
+		textAt(dc, "缺少真实质量数据时不显示通过", x4+20, y2+139, right-37, 22, 11, 400, slate)
+	}
+	textAt(dc, "工程同步和质量检测均可在顶部工具栏执行；切换页面不会重复扫描。", x, 645, cw, 22, 11, 450, slate)
 }
 func (a *state) bodyFace() string {
 	if a.snapshot == nil {
@@ -1008,7 +1043,7 @@ func (a *state) drawConnect(dc uintptr, x, cw int) {
 	rule(dc, x+30, 358, x+cw-30, 358, lineclr)
 	textAt(dc, "第二步 · 选择网格系统", x+30, 376, cw-60, 30, 18, 700, navy)
 	textAt(dc, "系统名称", x+30, 414, cw-60, 22, 13, 450, slate)
-	textAt(dc, "勾选后才能执行扫描；不会自动启动隐藏的 Meshing。", x+30, 544, cw-60, 26, 12, 400, slate)
+	textAt(dc, "勾选后才能执行工程同步与质量检测；不会自动启动隐藏的 Meshing。", x+30, 544, cw-60, 26, 12, 400, slate)
 	rule(dc, x+30, 581, x+cw-30, 581, lineclr)
 	status := "待连接"
 	if a.initRunning {
@@ -1074,15 +1109,16 @@ func (a *state) boundaryStatus() string {
 }
 func (a *state) drawFine(dc uintptr, x, cw int) {
 	textAt(dc, "直接使用 Meshing 现有命名", x+16, 83, cw-32, 43, 25, 700, navy)
-	textAt(dc, "不重新选面：读取已有 Named Selection → 按组设置尺寸 → 绑定 Sizing。", x+16, 132, cw-32, 30, 13, 400, slate)
-	solid(dc, x, 184, cw, 494, white, 20)
-	globalLine := "当前全局设置：未扫描（参考尺寸不能当作真实值）"
+	textAt(dc, "读取现有 Named Selection → 配置尺寸 → 发布 Sizing；不重新选面。", x+16, 132, cw-32, 26, 13, 400, slate)
+	textAt(dc, "参考尺寸 (mm)", x+16, 163, 125, 25, 12, 600, navy)
+	solid(dc, x, 198, cw, 480, white, 20)
+	globalLine := "当前全局设置：尚未同步；参考尺寸不是 ANSYS 实际全局值"
 	if a.snapshot != nil {
-		globalLine = "上次扫描全局：Element " + actualField(a.snapshot.Mesh, "ElementSize") + " · Max " + actualField(a.snapshot.Mesh, "MaximumSize") + " · 增长 " + actualField(a.snapshot.Mesh, "GrowthRate")
+		globalLine = "Meshing 全局：Element " + actualField(a.snapshot.Mesh, "ElementSize") + " · Max " + actualField(a.snapshot.Mesh, "MaximumSize") + " · Growth " + actualField(a.snapshot.Mesh, "GrowthRate")
 	}
-	textAt(dc, shorten(globalLine, 115), x+16, 162, cw-32, 20, 11, 500, slate)
-	textAt(dc, "尺寸相近的命名组（单击选择／双击折叠）", x+30, 202, 590, 27, 17, 700, navy)
-	textAt(dc, "自动推荐只是待审核方案；不重新选面，不会立即生成网格。", x+30, 231, 550, 23, 12, 450, slate)
+	textAt(dc, shorten(globalLine, 115), x+30, 202, cw-60, 18, 11, 500, slate)
+	textAt(dc, "尺寸相近的命名组（单击选择／双击折叠）", x+30, 225, 590, 27, 17, 700, navy)
+	textAt(dc, "命名数据来自顶部「同步工程」；页面切换不重新扫描。", x+30, 252, 550, 18, 11, 450, slate)
 	_, rightX, rightW := fineColumns(x + cw + 20)
 	textAt(dc, "选中的组或命名", rightX, 216, rightW, 25, 16, 700, navy)
 	idx := int(send(a.ctl("finegroups"), LB_GETCURSEL, 0, 0))
@@ -1128,15 +1164,15 @@ func (a *state) drawReport(dc uintptr, x, cw int) {
 	if a.qualityStale && a.qualityResult != nil {
 		textAt(dc, "历史数据 · 需重新检查", x+cw-230, 88, 202, 26, 12, 650, warningcolor)
 	}
-	textAt(dc, "查看网格数量、质量和风险单元；查看不会修改网格。", x+16, 130, cw-32, 26, 13, 400, slate)
-	textAt(dc, "质量检查   /   偏度标记   /   方案审核   /   发布控制", x+18, 157, cw-36, 22, 12, 450, slate)
+	textAt(dc, "检查网格质量、标记异常单元并审核局部细化方案；查看不会修改网格。", x+16, 130, cw-32, 26, 13, 400, slate)
+	textAt(dc, "工程同步与质量更新由顶部公共工具栏负责；本页只处理诊断和方案审核。", x+18, 157, cw-36, 22, 11, 450, slate)
 	solid(dc, x, 185, cw, 508, white, 18)
 	if a.busy && a.activePhase != "" {
 		textAt(dc, "运行中："+taskDisplayName(a.activePhase)+"（尚未确认完成）", x+30, 183, cw-60, 24, 12, 650, warningcolor)
 	}
 	if a.last == nil {
 		textAt(dc, "尚无检测结果", x+30, 212, cw-60, 34, 18, 600, navy)
-		textAt(dc, "先回到概览，连接工程后点击「只读扫描」。", x+30, 258, cw-60, 28, 14, 400, slate)
+		textAt(dc, "先连接工程，再使用顶部「同步工程」读取当前 Mesh。", x+30, 258, cw-60, 28, 14, 400, slate)
 	} else {
 		textAt(dc, "最近结果："+taskDisplayName(a.last.Phase)+"  ·  "+taskStateText(a.last.Status), x+30, 209, cw-60, 30, 16, 650, navy)
 		rule(dc, x+30, 245, x+cw-30, 245, lineclr)
@@ -1200,7 +1236,7 @@ func (a *state) drawReport(dc uintptr, x, cw int) {
 			summaries = append(summaries, "质量判断："+qualityGateText(printable(qualityData["quality_gate"])))
 		} else if a.last.Phase != "quality_check" && a.last.Phase != "diagnose" {
 			summaries = append(summaries, "本次是命名或设置任务，未测量网格质量。")
-			summaries = append(summaries, "点击下方「只读检查网格质量」获取当前网格实测数据。")
+			summaries = append(summaries, "使用顶部「更新质量」读取当前网格实测指标。")
 		} else {
 			summaries = append(summaries, "当前无可测量网格，或质量接口未返回数据。")
 		}
