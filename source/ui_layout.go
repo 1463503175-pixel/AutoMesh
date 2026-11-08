@@ -44,7 +44,6 @@ func uiWidth(width int) int {
 func plannedControls(width int) map[string]uiBox {
 	cw := uiWidth(width)
 	x := contentX
-	gap := 12
 	left := cw * 63 / 100
 	listW, rightX, rightW := fineColumns(width)
 	return map[string]uiBox{
