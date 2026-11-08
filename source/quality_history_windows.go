@@ -217,8 +217,12 @@ func (a *state) drawQualityAnalysis(dc uintptr, x, cw int) {
 	solid(dc, x, tableY, cw, 228, white, 16)
 	textAt(dc, "关键指标对比", x+20, tableY+12, cw-40, 24, 16, 700, navy)
 	textAt(dc, "指标", x+22, tableY+47, 170, 20, 11, 650, slate)
-	textAt(dc, "优化前", x+225, tableY+47, 150, 20, 11, 650, slate)
-	textAt(dc, "优化后", x+420, tableY+47, 150, 20, 11, 650, slate)
+	beforeLabel, afterLabel := "优化前", "优化后"
+	if !comparable {
+		beforeLabel, afterLabel = "快照 A", "快照 B"
+	}
+	textAt(dc, beforeLabel, x+225, tableY+47, 150, 20, 11, 650, slate)
+	textAt(dc, afterLabel, x+420, tableY+47, 150, 20, 11, 650, slate)
 	textAt(dc, "变化", x+620, tableY+47, cw-650, 20, 11, 650, slate)
 	rule(dc, x+20, tableY+70, x+cw-20, tableY+70, lineclr)
 
@@ -242,6 +246,11 @@ func (a *state) drawQualityAnalysis(dc uintptr, x, cw int) {
 			after string
 			delta string
 		}{"最小正交质量", qualityFloatText(before.OrthogonalQuality.Min), qualityFloatText(after.OrthogonalQuality.Min), qualityFloatDelta(before.OrthogonalQuality.Min, after.OrthogonalQuality.Min, true)}
+	}
+	if !comparable {
+		for i := range rows {
+			rows[i].delta = "不可比"
+		}
 	}
 	for i, row := range rows {
 		y := tableY + 77 + i*23
@@ -287,6 +296,7 @@ func (a *state) drawQualityAnalysis(dc uintptr, x, cw int) {
 		textAt(dc, "没有可用于趋势图的同几何偏斜度快照。", plotX+10, plotY+42, plotW-20, 22, 12, 450, slate)
 	} else {
 		var previousMaxX, previousMaxY, previousMeanX, previousMeanY int
+		hasPreviousMean := false
 		for i, item := range trend {
 			px := plotX
 			if len(trend) > 1 {
@@ -300,11 +310,12 @@ func (a *state) drawQualityAnalysis(dc uintptr, x, cw int) {
 			previousMaxX, previousMaxY = px, maxY
 			if item.Skewness.Mean != nil {
 				meanY := plotY + plotH - int(clampQuality01(*item.Skewness.Mean)*float64(plotH))
-				if i > 0 {
+				if hasPreviousMean {
 					rule(dc, previousMeanX, previousMeanY, px, meanY, green)
 				}
 				solid(dc, px-3, meanY-3, 6, 6, green, 3)
 				previousMeanX, previousMeanY = px, meanY
+				hasPreviousMean = true
 			}
 			if len(trend) <= 8 {
 				textAt(dc, item.CapturedAt.Format("01-02"), px-28, plotY+plotH+5, 56, 16, 9, 400, slate)
@@ -319,8 +330,12 @@ func (a *state) drawQualityAnalysis(dc uintptr, x, cw int) {
 	solid(dc, x, worksheetY, cw, 154, white, 16)
 	textAt(dc, "Worksheet 失败 / 警告计数", x+20, worksheetY+12, cw-40, 23, 15, 700, navy)
 	textAt(dc, "质量项", x+22, worksheetY+43, 190, 18, 10, 600, slate)
-	textAt(dc, "优化前 失败 / 警告", x+245, worksheetY+43, 200, 18, 10, 600, slate)
-	textAt(dc, "优化后 失败 / 警告", x+490, worksheetY+43, cw-510, 18, 10, 600, slate)
+	worksheetBeforeLabel, worksheetAfterLabel := "优化前 失败 / 警告", "优化后 失败 / 警告"
+	if !comparable {
+		worksheetBeforeLabel, worksheetAfterLabel = "快照 A 失败 / 警告", "快照 B 失败 / 警告"
+	}
+	textAt(dc, worksheetBeforeLabel, x+245, worksheetY+43, 200, 18, 10, 600, slate)
+	textAt(dc, worksheetAfterLabel, x+490, worksheetY+43, cw-510, 18, 10, 600, slate)
 	names := make([]string, 0, len(display.Worksheet))
 	for _, metric := range display.Worksheet {
 		names = append(names, metric.Name)
