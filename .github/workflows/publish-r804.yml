@@ -1,0 +1,117 @@
+name: Publish AutoMesh R8.0.4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/trigger-r804.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-automesh-r804
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract and publish R8.0.4 package
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, shutil, zipfile
+
+          root = Path.cwd()
+          archive = root / "AutoMesh_R8_0_4_Continuous_Refinement.zip"
+          if not archive.is_file():
+              raise SystemExit("R8.0.4 ZIP not found in repository root")
+
+          extract = root / ".r804_extract"
+          if extract.exists():
+              shutil.rmtree(extract)
+          extract.mkdir()
+
+          with zipfile.ZipFile(archive) as z:
+              bad = z.testzip()
+              if bad:
+                  raise SystemExit(f"ZIP integrity check failed at {bad}")
+              z.extractall(extract)
+
+          exe = next(extract.rglob("AutoMesh.exe"), None)
+          source_dir = next((p for p in extract.rglob("完整源码") if p.is_dir()), None)
+          if exe is None or source_dir is None:
+              raise SystemExit("ZIP must contain AutoMesh.exe and a 完整源码 directory")
+
+          package_root = exe.parent
+          if source_dir.parent != package_root:
+              raise SystemExit("Unexpected ZIP layout: 完整源码 must sit beside AutoMesh.exe")
+
+          release_note = source_dir / "R8.0.4_连续优化与历史Sizing接管.md"
+          if not release_note.is_file():
+              raise SystemExit("Missing R8.0.4 release notes in 完整源码")
+
+          app = root / "app"
+          app.mkdir(exist_ok=True)
+          shutil.copy2(exe, app / "AutoMesh.exe")
+
+          source_target = root / "source"
+          if source_target.exists():
+              shutil.rmtree(source_target)
+          shutil.copytree(source_dir, source_target)
+
+          docs = root / "docs" / "releases"
+          docs.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(release_note, docs / release_note.name)
+          readme_r804 = package_root / "README_R8.0.4.md"
+          if readme_r804.is_file():
+              shutil.copy2(readme_r804, docs / readme_r804.name)
+          validation = package_root / "验证结果_R8.0.4.txt"
+          if validation.is_file():
+              shutil.copy2(validation, docs / validation.name)
+
+          releases = root / "releases"
+          releases.mkdir(exist_ok=True)
+          shutil.copy2(archive, releases / archive.name)
+
+          readme = root / "README.md"
+          original = readme.read_text(encoding="utf-8") if readme.exists() else "# AutoMesh\n"
+          if "最新版本：R8.0.4" not in original:
+              block = """\n## 最新版本：R8.0.4\n\n- Windows x64 程序：[app/AutoMesh.exe](app/AutoMesh.exe)\n- 完整发布包：[releases/AutoMesh_R8_0_4_Continuous_Refinement.zip](releases/AutoMesh_R8_0_4_Continuous_Refinement.zip)\n- 版本说明：[docs/releases/R8.0.4_连续优化与历史Sizing接管.md](docs/releases/R8.0.4_连续优化与历史Sizing接管.md)\n- 完整源码位于 [source/](source/)。\n\n首次使用请先阅读版本说明。离线测试不等同于 ANSYS 2024 R2 实机端到端验收；发布 Sizing 前仍须在当前 Meshing 会话核对历史控件与影响域。\n"""
+              readme.write_text(block + "\n" + original, encoding="utf-8")
+
+          manifest = root / "SHA256SUMS.txt"
+          lines = []
+          for p in sorted(root.rglob("*")):
+              if not p.is_file() or ".git" in p.parts or ".r804_extract" in p.parts or p == manifest:
+                  continue
+              rel = p.relative_to(root).as_posix()
+              digest = hashlib.sha256(p.read_bytes()).hexdigest()
+              lines.append(f"{digest}  {rel}")
+          manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          shutil.rmtree(extract)
+          print(f"Published executable: {app / 'AutoMesh.exe'} ({(app / 'AutoMesh.exe').stat().st_size} bytes)")
+          print(f"Published source files: {sum(1 for p in source_target.rglob('*') if p.is_file())}")
+          print(f"ZIP integrity: OK; archive size: {archive.stat().st_size} bytes")
+          PY
+
+      - name: Commit extracted R8.0.4 release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app source docs/releases releases README.md SHA256SUMS.txt
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          git commit -m "Release AutoMesh R8.0.4 from repository ZIP"
+          git push
