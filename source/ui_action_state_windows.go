@@ -45,7 +45,5 @@ func (a *state) updateActionStates() {
 		enabled(a.ctl("reviewconfirm"), !a.busy && a.reviewPublishBlockedReason == "" && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
 	}
 	enabled(a.ctl("analysisExport"), len(a.qualityHistory) > 0 && !a.busy)
-	if false {
-	}
 	refresh()
 }
