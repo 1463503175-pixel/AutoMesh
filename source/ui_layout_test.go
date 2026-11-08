@@ -14,48 +14,71 @@ func TestAllVisibleControlsFit(t *testing.T) {
 		}
 	}
 }
+
 func TestCriticalTextDoesNotOverlapControls(t *testing.T) {
 	for _, w := range []int{1100, 1120, 1240, 1366, 1600, 1920} {
 		controls := plannedControls(w)
-		for _, l := range criticalLabels(w) {
+		for _, label := range criticalLabels(w) {
 			var keys []string
-			switch l.Page {
+			switch label.Page {
 			case 0:
-				keys = []string{"auto", "size", "global", "scan", "report", "open"}
+				keys = []string{"auto", "report", "open"}
 			case 1:
 				keys = []string{"port", "link", "systems", "ack"}
 			case 2:
-				keys = []string{"finegroups", "finegroupactive", "finegroupmm", "finegroupsave", "finesuggest", "finebulkmm", "finebulkapply", "finenames", "fineprepare", "finegenerate"}
+				keys = []string{"size", "global", "finegroups", "finegroupactive", "finegroupmm", "finegroupsave", "finesuggest", "finebulkmm", "finebulkapply", "finenames", "fineprepare", "finegenerate"}
 			case 3:
-				keys = []string{"qualitycheck", "htmlreport", "diagnose", "mark", "markwarning", "warningplan", "warningview", "warningpublish"}
+				keys = []string{"skewlow", "skewhigh", "markhighskew", "markwarning", "warningplan", "warningview", "warningpublish", "htmlreport", "diagnose", "mark"}
 			case 4:
-				keys = []string{"export", "exportbutton", "clearlease"}
+				keys = []string{"analysisBefore", "analysisAfter", "analysisExport"}
+			case 5:
+				keys = []string{"export", "exportbutton", "clearlease", "tasklog", "storagechange"}
 			}
-			for _, k := range keys {
-				box := controls[k]
-				if k == "systems" {
+			for _, key := range keys {
+				box := controls[key]
+				if key == "systems" {
 					box.H = 38
 				}
-				// The Named Selection listbox is always visible and occupies its true height.
-				if l.Area.intersects(box) {
-					t.Errorf("%d page%d %s overlaps %s", w, l.Page, l.Name, k)
+				if label.Area.intersects(box) {
+					t.Errorf("%d page%d %s overlaps %s", w, label.Page, label.Name, key)
 				}
 			}
 		}
 	}
 }
-func TestButtonsInsideHomeCard(t *testing.T) {
+
+func TestHomeActionsStayInsideStatusCard(t *testing.T) {
 	for _, w := range []int{1100, 1240, 1366, 1920} {
-		c := plannedControls(w)
-		card := c["_home_left_card"]
-		for _, k := range []string{"scan", "report", "open"} {
-			b := c[k]
+		controls := plannedControls(w)
+		card := controls["_home_left_card"]
+		for _, key := range []string{"report", "open"} {
+			b := controls[key]
 			if b.X < card.X || b.X+b.W > card.X+card.W || b.Y < card.Y || b.Y+b.H > card.Y+card.H {
-				t.Errorf("width %d: %s outside status card", w, k)
+				t.Errorf("width %d: %s outside status card", w, key)
 			}
 		}
 	}
 }
+
+func TestGlobalActionsStayPinnedAndDoNotOverlap(t *testing.T) {
+	for _, w := range []int{940, 1100, 1240, 1600, 1920, 2560} {
+		c := plannedControls(w)
+		keys := []string{"scan", "qualitycheck", "taskstatus"}
+		for _, key := range keys {
+			if c[key].Y != 14 || c[key].H != 34 || c[key].X+c[key].W > w {
+				t.Errorf("width %d: global action %s has invalid placement %+v", w, key, c[key])
+			}
+		}
+		for i := 0; i < len(keys); i++ {
+			for j := i + 1; j < len(keys); j++ {
+				if c[keys[i]].intersects(c[keys[j]]) {
+					t.Errorf("width %d: global actions %s and %s overlap", w, keys[i], keys[j])
+				}
+			}
+		}
+	}
+}
+
 func TestNoSecurityControlOrAdvancedOptions(t *testing.T) {
 	if _, ok := plannedControls(1240)["security"]; ok {
 		t.Fatal("security selector should not be visible")
@@ -79,8 +102,6 @@ func TestThreePublicationActionsDoNotOverlap(t *testing.T) {
 	}
 }
 
-// Direct-to-existing-NS workflow: list, editing fields and action buttons
-// must never overlap, including at the minimum supported window width.
 func TestNamedSelectionListAndControlsDoNotOverlap(t *testing.T) {
 	for _, w := range []int{1100, 1120, 1240, 1600, 1920} {
 		c := plannedControls(w)
@@ -95,8 +116,6 @@ func TestNamedSelectionListAndControlsDoNotOverlap(t *testing.T) {
 	}
 }
 
-// The listbox must never cover the right-hand editor, including its labels
-// and guidance, not merely the child window controls.
 func TestFineRightColumnDoesNotOverlapListOrClip(t *testing.T) {
 	for _, width := range []int{1100, 1120, 1240, 1366, 1600, 1920, 2560} {
 		boxes := plannedControls(width)
@@ -105,25 +124,25 @@ func TestFineRightColumnDoesNotOverlapListOrClip(t *testing.T) {
 		if rightX-list.X-list.W < 20 {
 			t.Errorf("width %d: no safe gap between list and right panel: list=%+v rightX=%d", width, list, rightX)
 		}
-		for _, n := range []string{"finegroupactive", "finegroupmm", "finegroupsave"} {
-			if list.intersects(boxes[n]) {
-				t.Errorf("width %d: list covers %s", width, n)
+		for _, name := range []string{"finegroupactive", "finegroupmm", "finegroupsave"} {
+			if list.intersects(boxes[name]) {
+				t.Errorf("width %d: list covers %s", width, name)
 			}
 		}
-		for _, lab := range criticalLabels(width) {
-			if lab.Page == 2 && len(lab.Name) >= len("右侧") && lab.Name[:len("右侧")] == "右侧" {
-				if list.intersects(lab.Area) {
-					t.Errorf("width %d: list hides %s", width, lab.Name)
+		for _, label := range criticalLabels(width) {
+			if label.Page == 2 && len(label.Name) >= len("右侧") && label.Name[:len("右侧")] == "右侧" {
+				if list.intersects(label.Area) {
+					t.Errorf("width %d: list hides %s", width, label.Name)
 				}
-				if lab.Area.X+lab.Area.W > width-20 {
-					t.Errorf("width %d: %s cut off", width, lab.Name)
+				if label.Area.X+label.Area.W > width-20 {
+					t.Errorf("width %d: %s cut off", width, label.Name)
 				}
 			}
 		}
-		for _, n := range []string{"finefilter", "finerefresh", "finechinese"} {
-			b := boxes[n]
+		for _, name := range []string{"finefilter", "finechinese"} {
+			b := boxes[name]
 			if b.X < list.X || b.X+b.W > list.X+list.W {
-				t.Errorf("width %d: %s outside left column", width, n)
+				t.Errorf("width %d: %s outside left column", width, name)
 			}
 		}
 	}
@@ -142,36 +161,18 @@ func TestRefreshPreservesOnlyValidNamedPreferences(t *testing.T) {
 	}
 }
 
-func TestV105NewControlsDoNotOverlap(t *testing.T) {
-	for _, width := range []int{1100, 1120, 1280, 1440, 1600, 1920, 2560} {
-		controls := plannedControls(width)
-		for _, pair := range [][2]string{{"finegroups", "finesuggest"}, {"finebulkmm", "finebulkapply"}, {"finegroups", "finebulkmm"}, {"finegroups", "finebulkapply"}, {"finesuggest", "fineprepare"}, {"finebulkapply", "finegenerate"}, {"mark", "markwarning"}, {"qualitycheck", "markwarning"}} {
-			a, b := controls[pair[0]], controls[pair[1]]
-			if a.intersects(b) {
-				t.Errorf("at %d: %s overlaps %s: %+v %+v", width, pair[0], pair[1], a, b)
+func TestFineAndReportActionsStayInTheirOwnPages(t *testing.T) {
+	for _, width := range []int{1100, 1120, 1280, 1440, 1600, 1920} {
+		c := plannedControls(width)
+		for _, pair := range [][2]string{
+			{"finegroups", "finesuggest"}, {"finebulkmm", "finebulkapply"},
+			{"finegroups", "finebulkmm"}, {"finegroups", "finebulkapply"},
+			{"finesuggest", "fineprepare"}, {"finebulkapply", "finegenerate"},
+			{"mark", "markwarning"}, {"warningplan", "warningpublish"},
+		} {
+			if c[pair[0]].intersects(c[pair[1]]) {
+				t.Errorf("at %d: %s overlaps %s", width, pair[0], pair[1])
 			}
-		}
-		for _, name := range []string{"finesuggest", "finebulkmm", "finebulkapply", "markwarning"} {
-			b := controls[name]
-			if b.X < 0 || b.X+b.W > width || b.Y+b.H > 690 {
-				t.Errorf("%d: %s outside %v", width, name, b)
-			}
-		}
-	}
-}
-
-func TestWarningHotspotActionsDoNotOverlap(t *testing.T) {
-	for _, w := range []int{1100, 1240, 1366, 1920} {
-		c := plannedControls(w)
-		for _, old := range []string{"qualitycheck", "htmlreport", "diagnose", "mark", "markwarning"} {
-			for _, extra := range []string{"warningplan", "warningview", "warningpublish"} {
-				if c[old].intersects(c[extra]) {
-					t.Errorf("%d: %s intersects %s", w, old, extra)
-				}
-			}
-		}
-		if c["warningplan"].intersects(c["warningpublish"]) {
-			t.Errorf("%d: new actions overlap", w)
 		}
 	}
 }
