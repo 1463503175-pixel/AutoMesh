@@ -518,9 +518,9 @@ R8.0.4 发布说明记录的代码级结果：
 
 ## 10. 相关入口
 
-- [AutoMesh GitHub 仓库首页](../../)
+- [AutoMesh GitHub 仓库首页](../)
 - [R8.0.4 连续优化与历史 Sizing 接管说明](releases/R8.0.4_连续优化与历史Sizing接管.md)
-- [Windows x64 程序](../../app/AutoMesh.exe)
-- [R8.0.4 完整发布包](../../releases/AutoMesh_R8_0_4_Continuous_Refinement.zip)
-- [完整源码](../../source/)
-- [SHA-256 校验清单](../../SHA256SUMS.txt)
+- [Windows x64 程序](../app/AutoMesh.exe)
+- [R8.0.4 完整发布包](../releases/AutoMesh_R8_0_4_Continuous_Refinement.zip)
+- [完整源码](../source/)
+- [SHA-256 校验清单](../SHA256SUMS.txt)
