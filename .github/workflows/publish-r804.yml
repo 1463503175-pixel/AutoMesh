@@ -65,7 +65,11 @@ jobs:
 
           release_note = next(extract.rglob("R8.0.4_连续优化与历史Sizing接管.md"), None)
           if release_note is None:
-              raise SystemExit("ZIP does not contain the R8.0.4 release note")
+              # The authoritative R8.0.4 note was already committed to docs/releases.
+              existing_note = root / "docs" / "releases" / "R8.0.4_连续优化与历史Sizing接管.md"
+              if not existing_note.is_file():
+                  raise SystemExit("R8.0.4 release note is missing from both ZIP and repository")
+              release_note = existing_note
 
           print("ZIP top-level entries:")
           for p in sorted(extract.iterdir()):
