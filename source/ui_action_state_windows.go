@@ -34,7 +34,7 @@ func (a *state) updateActionStates() {
 	// Freeze inputs while an ACT job is active: the Worker uses a submitted
 	// snapshot, and editing visible inputs mid-run incorrectly implies those
 	// edits alter the in-flight task. Native read-only navigation remains live.
-	for _, name := range []string{"size", "global", "port", "export", "skewlow", "skewhigh", "ack", "systems"} {
+	for _, name := range []string{"size", "global", "port", "export", "skewlow", "skewhigh", "ack", "systems", "analysisBefore", "analysisAfter"} {
 		enabled(a.ctl(name), !a.busy)
 	}
 	if a.page == 6 {
