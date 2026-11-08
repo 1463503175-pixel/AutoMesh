@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"strconv"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,8 +34,8 @@ func TestQualitySnapshotKeepsOnlyReturnedMetrics(t *testing.T) {
 	if !ok {
 		t.Fatal("completed quality result was not captured")
 	}
-	if snapshot.MeshElements != 3836723 || snapshot.MeshNodes != 912345 {
-		t.Fatalf("unexpected mesh size: elements=%d nodes=%d", snapshot.MeshElements, snapshot.MeshNodes)
+	if snapshot.MeshElements == nil || *snapshot.MeshElements != 3836723 || snapshot.MeshNodes == nil || *snapshot.MeshNodes != 912345 {
+		t.Fatalf("unexpected mesh size: elements=%v nodes=%v", snapshot.MeshElements, snapshot.MeshNodes)
 	}
 	if snapshot.Skewness.Max == nil || *snapshot.Skewness.Max != 0.8943 {
 		t.Fatalf("missing measured skewness maximum: %+v", snapshot.Skewness)
@@ -79,7 +79,7 @@ func TestQualityHistoryPersistsDeduplicatesAndCaps(t *testing.T) {
 	base := time.Date(2026, 11, 1, 8, 0, 0, 0, time.Local)
 	for i := 0; i < maxQualityHistory+3; i++ {
 		item := QualitySnapshot{
-			ID: "job-" + json.Number(string(rune('A'+i))).String(),
+			ID: "job-" + strconv.Itoa(i),
 			JobID: "job", CapturedAt: base.Add(time.Duration(i)*time.Minute),
 			Project: "p", GeometryFingerprint: "g",
 		}
