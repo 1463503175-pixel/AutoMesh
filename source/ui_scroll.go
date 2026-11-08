@@ -11,8 +11,10 @@ func pageContentBottom(page int) int {
 	case 3:
 		return 711
 	case 4:
-		return 671
+		return 1010
 	case 5:
+		return 671
+	case 6:
 		return 720
 	default:
 		return 711
