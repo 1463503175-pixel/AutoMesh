@@ -204,7 +204,7 @@ func (a *state) selectedExistingSphereOverlap(ids []string) (overlapCount int, n
 }
 
 func (a *state) reviewSelectionSummary() {
-	if a.page != 5 || a.reviewPopulating {
+	if a.page != 6 || a.reviewPopulating {
 		return
 	}
 	ids, budget := a.selectedCandidates()
@@ -282,7 +282,7 @@ func (a *state) openCandidateReview() {
 	send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
 	a.reviewPublished = published
 	a.reviewExistingBudget = budget
-	a.switchPage(5)
+	a.switchPage(6)
 	a.populateCandidateList()
 	a.reviewSelectionSummary()
 	if a.reviewPublishBlockedReason != "" {
