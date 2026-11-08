@@ -836,7 +836,7 @@ func (a *state) screen(dc uintptr, w, h int) {
 	solid(dc, 22, 16, 34, 34, cobalt, 12)
 	textAt(dc, "A", 31, 16, 27, 34, 22, 800, white)
 	textAt(dc, "AutoMesh", 66, 13, 230, 38, 22, 700, navy)
-	textAt(dc, "R8.0.4  ·  自动网格工作台", 256, 17, 240, 32, 13, 450, slate)
+	textAt(dc, "R8.0.4 · 工作台", 256, 17, 130, 32, 13, 450, slate)
 	if a.connected {
 		solid(dc, w-535, 17, 145, 30, greenbg, 16)
 		textAt(dc, "●  Workbench 已连接", w-527, 18, 132, 27, 11, 600, green)
