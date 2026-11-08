@@ -86,7 +86,8 @@ jobs:
 
           docs = root / "docs" / "releases"
           docs.mkdir(parents=True, exist_ok=True)
-          shutil.copy2(release_note, docs / release_note.name)
+          if release_note.resolve() != (docs / release_note.name).resolve():
+              shutil.copy2(release_note, docs / release_note.name)
 
           readme_r804 = next(extract.rglob("README_R8.0.4.md"), None)
           if readme_r804:
