@@ -44,20 +44,32 @@ jobs:
               bad = z.testzip()
               if bad:
                   raise SystemExit(f"ZIP integrity check failed at {bad}")
+              for info in z.infolist():
+                  target = (extract / info.filename).resolve()
+                  if extract.resolve() not in target.parents and target != extract.resolve():
+                      raise SystemExit(f"Unsafe ZIP path: {info.filename}")
               z.extractall(extract)
 
           exe = next(extract.rglob("AutoMesh.exe"), None)
-          source_dir = next((p for p in extract.rglob("完整源码") if p.is_dir()), None)
-          if exe is None or source_dir is None:
-              raise SystemExit("ZIP must contain AutoMesh.exe and a 完整源码 directory")
+          if exe is None:
+              raise SystemExit("ZIP does not contain AutoMesh.exe")
 
-          package_root = exe.parent
-          if source_dir.parent != package_root:
-              raise SystemExit("Unexpected ZIP layout: 完整源码 must sit beside AutoMesh.exe")
+          source_dir = None
+          for p in extract.rglob("main_windows.go"):
+              candidate = p.parent
+              if (candidate / "core.go").is_file() and (candidate / "go.mod").is_file():
+                  source_dir = candidate
+                  break
+          if source_dir is None:
+              raise SystemExit("Could not locate complete Go source (main_windows.go, core.go, go.mod)")
 
-          release_note = source_dir / "R8.0.4_连续优化与历史Sizing接管.md"
-          if not release_note.is_file():
-              raise SystemExit("Missing R8.0.4 release notes in 完整源码")
+          release_note = next(extract.rglob("R8.0.4_连续优化与历史Sizing接管.md"), None)
+          if release_note is None:
+              raise SystemExit("ZIP does not contain the R8.0.4 release note")
+
+          print("ZIP top-level entries:")
+          for p in sorted(extract.iterdir()):
+              print(" -", p.name, "(dir)" if p.is_dir() else f"({p.stat().st_size} bytes)")
 
           app = root / "app"
           app.mkdir(exist_ok=True)
@@ -71,11 +83,12 @@ jobs:
           docs = root / "docs" / "releases"
           docs.mkdir(parents=True, exist_ok=True)
           shutil.copy2(release_note, docs / release_note.name)
-          readme_r804 = package_root / "README_R8.0.4.md"
-          if readme_r804.is_file():
+
+          readme_r804 = next(extract.rglob("README_R8.0.4.md"), None)
+          if readme_r804:
               shutil.copy2(readme_r804, docs / readme_r804.name)
-          validation = package_root / "验证结果_R8.0.4.txt"
-          if validation.is_file():
+          validation = next(extract.rglob("验证结果_R8.0.4.txt"), None)
+          if validation:
               shutil.copy2(validation, docs / validation.name)
 
           releases = root / "releases"
@@ -99,7 +112,7 @@ jobs:
           manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
           shutil.rmtree(extract)
-          print(f"Published executable: {app / 'AutoMesh.exe'} ({(app / 'AutoMesh.exe').stat().st_size} bytes)")
+          print(f"Published executable bytes: {(app / 'AutoMesh.exe').stat().st_size}")
           print(f"Published source files: {sum(1 for p in source_target.rglob('*') if p.is_file())}")
           print(f"ZIP integrity: OK; archive size: {archive.stat().st_size} bytes")
           PY
