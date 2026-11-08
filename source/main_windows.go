@@ -1952,6 +1952,7 @@ func (a *state) run(kind string) {
 				}
 			}
 		}
+		var completedSummary map[string]any
 		a.mu.Lock()
 		if err != nil {
 			a.errorText = err.Error()
@@ -1962,6 +1963,7 @@ func (a *state) run(kind string) {
 			a.last = &result
 			var sm map[string]any
 			_ = json.Unmarshal(result.Summary, &sm)
+			completedSummary = sm
 			a.lastSummary = sm
 			if result.Phase == "quality_check" || result.Phase == "diagnose" || result.Phase == "generate_reviewed" || result.Phase == "auto_onepass" || result.Phase == "auto" {
 				if len(asMap(sm["quality"])) > 0 {
@@ -1979,6 +1981,9 @@ func (a *state) run(kind string) {
 			}
 		}
 		a.mu.Unlock()
+		if err == nil && result.JobID != "" {
+			a.recordQualitySnapshot(result, completedSummary)
+		}
 		call(post, a.window, WM_APPDONE, 0, 0)
 	}()
 }
@@ -2199,6 +2204,7 @@ func (a *state) finish(connecting bool) {
 	a.mu.Unlock()
 	a.busySet(false)
 	a.activePhase = ""
+	a.populateQualityHistoryControls()
 	if !connecting && a.last != nil && e == "" {
 		if _, reportErr := a.ws.SaveHTMLReport(a.snapshot, *a.last); reportErr != nil && e == "" {
 			e = "无法写入最新报告：" + reportErr.Error()
@@ -2911,13 +2917,15 @@ func (a *state) act(id int) {
 		a.switchPage(2)
 	case ID_NAV_REPORT:
 		a.switchPage(3)
-	case ID_NAV_SETTINGS:
+	case ID_NAV_ANALYSIS:
 		a.switchPage(4)
+	case ID_NAV_SETTINGS:
+		a.switchPage(5)
 	case ID_AUTO:
 		if !a.connected {
 			a.connect(false)
 		} else if a.snapshot == nil || a.scannedSystem == "" {
-			alert("请先在概览页点击只读扫描，然后审核局部细化方案。")
+			alert("请先使用顶部「同步工程」，再审核局部细化方案。")
 		} else {
 			a.switchPage(2)
 		}
@@ -2967,6 +2975,8 @@ func (a *state) act(id int) {
 		a.beginInitialization()
 	case ID_SCAN:
 		a.run("inspect")
+	case ID_ANALYSIS_EXPORT:
+		a.exportQualityHistoryCSV()
 	case ID_CONNECT:
 		a.connect(false)
 	case ID_REPORT:
@@ -3036,7 +3046,7 @@ func (a *state) drawBtn(item *drawItem) {
 	id := int(item.ID)
 	r := item.RC
 	nav := id >= ID_NAV_HOME && id <= ID_NAV_SETTINGS
-	primary := id == ID_AUTO || id == ID_CONNECT || id == ID_FINE_GENERATE || id == ID_MARK_HIGH_SKEW || id == ID_WARNING_PUBLISH || id == ID_REVIEW_CONFIRM
+	primary := id == ID_AUTO || id == ID_CONNECT || id == ID_SCAN || id == ID_FINE_GENERATE || id == ID_MARK_HIGH_SKEW || id == ID_WARNING_PUBLISH || id == ID_REVIEW_CONFIRM
 	danger := id == ID_TASK_STOP || id == ID_CLEAR_LEASE
 	fillclr, fg := color(239, 243, 249), navy
 	if primary {
@@ -3081,7 +3091,7 @@ func (a *state) drawBtn(item *drawItem) {
 	txt(item.HDC, s, r, sz, wt, fg, DT_CENTER|DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS)
 }
 func isActionID(id int) bool {
-	return (id >= ID_NAV_HOME && id <= ID_REVIEW_DETAILS && id != ID_FINE_GROUP_SELECT) || id == ID_STORAGE_CHANGE
+	return (id >= ID_NAV_HOME && id <= ID_REVIEW_DETAILS && id != ID_FINE_GROUP_SELECT) || id == ID_STORAGE_CHANGE || id == ID_ANALYSIS_EXPORT
 }
 func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 	switch msg {
@@ -3244,6 +3254,10 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 			ui.updateActionStates()
 			return 0
 		}
+		if (l == ui.ctl("analysisBefore") || l == ui.ctl("analysisAfter")) && (w>>16) == CBN_SELCHANGE {
+			refresh()
+			return 0
+		}
 		if (l == ui.ctl("skewlow") || l == ui.ctl("skewhigh")) && (w>>16) == EN_CHANGE {
 			// Inline range validation updates the native button immediately;
 			// no need to submit a failing ACT job to discover a typo.
@@ -3330,6 +3344,11 @@ func main() {
 		return
 	}
 	ui.ws = ws
+	if history, historyErr := ws.LoadQualityHistory(); historyErr == nil {
+		ui.qualityHistory = history
+	} else {
+		ui.errorText = "历史质量数据读取失败：" + historyErr.Error()
+	}
 	ui.instance = call(module, 0)
 	name := ptr("AutoMesh2024R2Modern")
 	appIcon := call(loadicon, ui.instance, 1) // RT_GROUP_ICON 1 embedded in PE resource
