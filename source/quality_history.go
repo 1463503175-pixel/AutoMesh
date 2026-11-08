@@ -39,8 +39,8 @@ type QualitySnapshot struct {
 	CapturedAt          time.Time                  `json:"captured_at"`
 	Project             string                     `json:"project"`
 	GeometryFingerprint string                     `json:"geometry_fingerprint"`
-	MeshElements        int64                      `json:"mesh_elements,omitempty"`
-	MeshNodes           int64                      `json:"mesh_nodes,omitempty"`
+	MeshElements        *int64                     `json:"mesh_elements,omitempty"`
+	MeshNodes           *int64                     `json:"mesh_nodes,omitempty"`
 	Skewness            QualityMetricSnapshot      `json:"skewness"`
 	OrthogonalQuality   *QualityMetricSnapshot     `json:"orthogonal_quality,omitempty"`
 	Worksheet           []QualityWorksheetSnapshot `json:"worksheet,omitempty"`
@@ -307,7 +307,7 @@ func (w Workspace) ExportQualityHistoryCSV(filename string, items []QualitySnaps
 		}
 		row := []string{
 			item.CapturedAt.Format(time.RFC3339), item.JobID, item.Project, item.GeometryFingerprint,
-			strconv.FormatInt(item.MeshElements, 10), strconv.FormatInt(item.MeshNodes, 10),
+			qualityCSVCount(item.MeshElements), qualityCSVCount(item.MeshNodes),
 			qualityCSVNumber(item.Skewness.Min), qualityCSVNumber(item.Skewness.Max),
 			qualityCSVNumber(item.Skewness.Mean), item.Skewness.Source,
 			qualityCSVNumber(oq.Min), qualityCSVNumber(oq.Max), qualityCSVNumber(oq.Mean),
