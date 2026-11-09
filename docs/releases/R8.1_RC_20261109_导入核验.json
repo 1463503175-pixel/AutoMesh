@@ -1,0 +1,14 @@
+{
+  "version": "R8.1 RC 2026-11-09",
+  "archive": "AutoMesh_R8_1_RC_20261109_B4E98F95E6AEB8E68B8AE5BA85E5A3Sizing_AEE6B4BAE781.zip",
+  "archive_sha256": "1fbd9bf31ffa3a991712bffe0ba4e6cbfb7e3ac309922c5f5dcd5adb58257260",
+  "archive_entries": 248,
+  "verified_manifest_entries": 247,
+  "promoted_source_files": 221,
+  "excluded_python_caches": 24,
+  "exe_bytes": 8126464,
+  "exe_sha256": "e8438d372cb7788bc45391cf7af5a54846d8f0bbd6e2a93dff3d2cfb3f43f69f",
+  "windows_gui_subsystem": 2,
+  "ansys_live_validation": "PENDING",
+  "legacy_releases_preserved": true
+}

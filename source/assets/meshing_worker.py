@@ -10,6 +10,8 @@ import hashlib
 import traceback
 import time
 import math
+import heapq
+import bisect
 import tempfile
 
 execfile(os.path.join(os.path.dirname(JOB_FILE), "geometry_rules.py"))
@@ -154,7 +156,12 @@ def emit_progress(percent, stage, detail):
         current=globals().get('job', {})
         jobid=utext(current.get('job_id',''))
         if len(jobid)!=32:return
-        payload={'job_id':jobid,'stage':utext(stage),'detail':utext(detail),
+        payload={'job_id':jobid,
+                 'logical_job_id':utext(current.get('logical_job_id') or jobid),
+                 'attempt_id':utext(current.get('attempt_id') or jobid),
+                 'attempt_number':int(current.get('attempt_number') or 1),
+                 'retry_of_job_id':utext(current.get('retry_of_job_id','')),
+                 'stage':utext(stage),'detail':utext(detail),
                  'percent':(None if percent is None else max(0,min(100,int(percent)))),
                  'timestamp':time.time()}
         payload.update(meshing_process_identity())
@@ -250,6 +257,21 @@ def live_control_inventory():
         except Exception: pass
         try: item['mm'] = utext(c.ElementSize)
         except Exception: pass
+        if _is_sizing(c):
+            item['is_sizing'] = True
+            item['suppressed'] = bool(_is_control_suppressed(c))
+            try: item['scope_ids'] = sorted(int(i) for i in _effective_sizing_ids(c))
+            except Exception as exc: item['scope_error'] = utext(exc)[:160]
+            try: item['size_mm'] = float(_read_control_mm(c))
+            except Exception: pass
+            for field in ('Location','NamedSelection'):
+                try:
+                    ref = getattr(c,field)
+                    ref_name = utext(getattr(ref,'Name',''))
+                    if ref_name and _ids(ref) == set(item.get('scope_ids',[])):
+                        item['named_selection'] = ref_name
+                        break
+                except Exception: pass
         if item['name'].startswith('AutoMesh_QR_'):
             try:
                 item['is_sizing'] = bool(_is_sizing(c))
@@ -353,6 +375,23 @@ def snapshot():
                             pass
                         if radii:
                             entry['full_circle_radii'] = radii[:12]
+                    # Read-only: retain a bounded sample of real CAD edge IDs
+                    # and lengths for later manual small-feature diagnostics.
+                    # Edge candidates are never used to auto-scope a Sizing.
+                    try:
+                        edges = list(face.Edges)
+                        if 0 < len(edges) <= 32:
+                            edge_samples = []
+                            for edge in edges:
+                                eid = int(edge.Id)
+                                length = float(edge.Length)
+                                if eid > 0 and length > 0 and not math.isnan(length) and not math.isinf(length):
+                                    edge_samples.append({'id':eid,'length':length})
+                            if len(edge_samples) == len(edges):
+                                edge_samples.sort(key=lambda e:(e['length'],e['id']))
+                                entry['feature_edges'] = edge_samples[:4]
+                    except Exception:
+                        pass
                     result['faces'].append(entry)
                     records.append('%d|%.12g|%s|%s|%s;' % (entry['id'], entry['area'], entry['type'],
                                    repr(entry.get('centroid')), repr(entry.get('bbox'))))
@@ -368,6 +407,7 @@ def snapshot():
     for record in sorted(records):
         stamp.update(record.encode('utf-8'))
     result['fingerprint'] = stamp.hexdigest()
+    result['geometry_quick_signature'] = quick_geometry_signature(result['project'], result['bodies'])
     result['geometry_unit_factor_mm'] = unit_to_mm(result['geometry_unit'])
     nsroot = Model.NamedSelections
     if nsroot:
@@ -394,12 +434,86 @@ def snapshot():
         'global_capture_curvature': hasattr(mesh,'CaptureCurvature'),
         'quality_skewness': hasattr(MeshMetricType,'Skewness'),
         'quality_orthogonal_quality': hasattr(MeshMetricType,'OrthogonalQuality'),
+        'quality_element_quality': hasattr(MeshMetricType,'ElementQuality'),
         'quality_worksheet_failed_count': hasattr(mesh,'GetVolumeMeshQualityCountFailed'),
         'official_failed_element_group': hasattr(mesh,'CreateMQVolumeElementsNamedSelection'),
         'fluent_msh_export': hasattr(getattr(mesh,'InternalObject',None),'WriteFluentInputFile'),
         'local_sizing_native_properties':'unknown_until_sizing_created',
     }
+    # This is a best-effort mesh-state identity, not a hash of every element
+    # connectivity record. It is sufficient to detect common count/control
+    # changes; identical counts and controls after an external remesh still
+    # require an explicit quality refresh.
+    try:
+        result['mesh_signature'] = mesh_state_signature(result)
+    except Exception as exc:
+        result['mesh_signature'] = None
+        result['mesh_signature_error'] = utext(exc)[:180]
     return result
+
+
+def lightweight_status():
+    """Read engineering metadata without traversing every geometric face.
+
+    This endpoint is for the global status bar only. It deliberately does not
+    create/replace SNAPSHOT_FILE and does not claim geometry identity is
+    verified for any write operation.
+    """
+    project = utext(ExtAPI.DataModel.Project.ProjectDirectory)
+    bodies = []
+    face_count = 0
+    for assembly in ExtAPI.DataModel.GeoData.Assemblies:
+        for part in assembly.Parts:
+            for body in part.Bodies:
+                count = int(len(body.Faces))
+                face_count += count
+                bodies.append({'id': int(body.Id), 'name': utext(body.Name),
+                               'volume': float(body.Volume), 'face_count': count})
+    named = []
+    root = getattr(Model, 'NamedSelections', None)
+    if root is not None:
+        for item in root.Children:
+            entry = {'name': utext(item.Name), 'face_count': None}
+            try:
+                entry['face_count'] = len(item.Location.Ids)
+            except Exception:
+                entry['scope_status'] = 'unreadable'
+            named.append(entry)
+    mesh = {}
+    for field in ('Elements', 'Nodes', 'PhysicsPreference', 'SolverPreference',
+                  'ElementOrder', 'ElementSize', 'MaximumSize', 'GrowthRate',
+                  'CaptureCurvature', 'CaptureProximity'):
+        try:
+            mesh[field] = utext(getattr(Model.Mesh, field))
+        except Exception:
+            pass
+    result = {'project': project, 'body_count': len(bodies),
+              'face_count': face_count, 'bodies': bodies,
+              'named': named, 'named_count': len(named),
+              'geometry_quick_signature': quick_geometry_signature(project, bodies),
+              'mesh': mesh, 'geometry_identity_verified': False,
+              'read_mode': 'lightweight_metadata_only',
+              'note': '工程状态同步未遍历面几何指纹；发布/修改前仍须完整扫描并由 ACT 实时核验'}
+    inventory = live_control_inventory()
+    result.update(inventory)
+    result['control_count'] = len(inventory.get('controls', []))
+    try:
+        result['mesh_signature'] = mesh_state_signature(result)
+    except Exception as exc:
+        result['mesh_signature_error'] = utext(exc)[:180]
+    return result
+
+
+def quick_geometry_signature(project, bodies):
+    """Cheap structural fingerprint; useful for staleness, never write safety."""
+    rows = []
+    for body in bodies or []:
+        rows.append((int(body.get('id', 0)), utext(body.get('name', '')),
+                     round(float(body.get('volume', 0.0)), 9),
+                     int(body.get('face_count', 0))))
+    payload = {'project': utext(project), 'bodies': sorted(rows),
+               'definition': 'automesh-geometry-quick-v1'}
+    return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=True).encode('utf-8')).hexdigest()
 
 
 def quick_geometry_identity():
@@ -456,6 +570,11 @@ def read_only_verified_snapshot(job):
         try: prior['mesh'][field] = utext(getattr(Model.Mesh, field))
         except Exception: pass
     prior.update(live_control_inventory())
+    try:
+        prior['mesh_signature'] = mesh_state_signature(prior)
+    except Exception as exc:
+        prior['mesh_signature'] = None
+        prior['mesh_signature_error'] = utext(exc)[:180]
     write(SNAPSHOT_FILE, prior)
     return prior
 
@@ -553,7 +672,7 @@ def quality_worksheet_summary():
     info={'status':'unavailable','metrics':[],'source':'2024R2 Mesh Quality Worksheet'}
     if not hasattr(m,'GetVolumeMeshQualityCountFailed'):
         return info
-    for metricname in ('Skewness','OrthogonalQuality'):
+    for metricname in ('Skewness','OrthogonalQuality','ElementQuality'):
         metric=getattr(MeshMetricType,metricname,None)
         if metric is None:
             continue
@@ -665,18 +784,21 @@ def validate_skew_range(low,high):
     return low,high
 
 
-def mark_threshold_skew_elements(low=0.90,high=1.00):
-    """Mark actual Mesh Element Skewness between user-selected bounds.
+def mark_threshold_quality_elements(low=0.90,high=1.00,metric_name='Skewness'):
+    """Mark a native Mesh Element quality metric between user-selected bounds.
 
     Uses an ACT Named Selection Worksheet with Skewness criteria, NOT the
     Warning / Error quality classification. Does not touch worksheet warning
     levels, mesh generation, Sizing, or original Named Selections.
     Only removes the newly created selection if generation/validation fails.
     """
+    if metric_name not in ('Skewness','ElementQuality'):
+        raise ValueError('Unsupported native quality metric')
     low,high=validate_skew_range(low,high)
+    requested_high=high
     mesh=Model.Mesh
     if int(mesh.Elements)<=0:
-        return {'status':'no_mesh','kind':'skew_range','created_groups':[],
+        return {'status':'no_mesh','kind':('skew_range' if metric_name=='Skewness' else 'element_quality_range'),'created_groups':[],
                 'range_min':low,'range_max':high,
                 'message':u'当前没有已生成网格，未创建选择组。'}
     # Use runtime ACT enums, with explicit import for consoles that do not
@@ -694,7 +816,7 @@ def mark_threshold_skew_elements(low=0.90,high=1.00):
         GeometryDefineByType=globals().get('GeometryDefineByType',None)
     # Never mutate ANY native Quality Worksheet warning/error thresholds.
     etype=_selection_enum(SelectionType,('MeshElement','MeshElements'),u'Mesh Element 类型')
-    metric=_selection_enum(SelectionCriterionType,('Skewness',),u'Skewness 筛选')
+    metric=_selection_enum(SelectionCriterionType,(metric_name,),utext(metric_name)+u' 筛选')
     # Prefer the native, single-row inclusive interval when ACT exposes it.
     # This is safer than two rows because filter intersection semantics differ
     # between older Meshing Worksheet builds.
@@ -711,7 +833,8 @@ def mark_threshold_skew_elements(low=0.90,high=1.00):
     cancellation_checkpoint()
     # Give each completed mark a unique name: never overwrite a manual group.
     suffix=utext(job.get('job_id',''))[:8]
-    name='AutoMesh_Skew_%03d_%03d_%s' % (int(round(low*1000)),int(round(high*1000)),suffix)
+    prefix='AutoMesh_Skew' if metric_name=='Skewness' else 'AutoMesh_EQ'
+    name='%s_%03d_%03d_%s' % (prefix,int(round(low*1000)),int(round(high*1000)),suffix)
     target=Model.AddNamedSelection()
     try:
         target.Name=name
@@ -740,35 +863,108 @@ def mark_threshold_skew_elements(low=0.90,high=1.00):
                 upper_row.Operator=less
                 upper_row.Value=float(high)
         cancellation_checkpoint()
-        target.Generate()
-        ids=sorted(set(int(i) for i in target.Location.Ids))
+        # For a broad ElementQuality interval, automatically find the largest
+        # lowest-quality prefix that fits the existing 4096-element geometry
+        # analysis cap. One ACT-owned temporary selection is regenerated; no
+        # existing selection, Sizing or mesh is touched. Do NOT claim that the
+        # entire requested interval was analysed when only a prefix fits.
+        auto_limited=False
+        attempts=0
+        if metric_name=='ElementQuality' and high-low>0.03 and range_op is not None:
+            analysis_cap=4096
+            requested_width=high-low
+            probe_high=min(high,low+requested_width/128.0)
+            best_high=None
+            best_ids=None
+            rejected_high=None
+            while attempts<16:
+                cancellation_checkpoint()
+                row.UpperBound=float(probe_high)
+                target.Generate()
+                ids=sorted(set(int(i) for i in target.Location.Ids))
+                attempts+=1
+                if len(ids)>analysis_cap:
+                    rejected_high=probe_high
+                    break
+                if ids:
+                    best_high=probe_high
+                    best_ids=ids
+                if probe_high>=high:
+                    break
+                probe_high=min(high,low+2.0*(probe_high-low))
+            # Refine only within a known safe/unsafe bracket. Never repeatedly
+            # scan the full oversized interval, and never exceed the cap.
+            if rejected_high is not None:
+                safe_high=best_high if best_high is not None else low
+                for _ in range(max(0,16-attempts)):
+                    cancellation_checkpoint()
+                    mid=(safe_high+rejected_high)/2.0
+                    if mid<=safe_high+1e-8:
+                        break
+                    row.UpperBound=float(mid)
+                    target.Generate()
+                    ids=sorted(set(int(i) for i in target.Location.Ids))
+                    attempts+=1
+                    if len(ids)>analysis_cap:
+                        rejected_high=mid
+                    else:
+                        safe_high=mid
+                        if ids:
+                            best_high=mid
+                            best_ids=ids
+            if best_ids is None:
+                target.Delete()
+                return {'status':'too_many_elements','kind':'element_quality_range',
+                        'created_groups':[],'range_min':low,'range_max':requested_high,
+                        'message':u'最低质量端也超过 4096 个单元的几何分析上限；已安全取消本次新选择组。请缩窄范围，未修改现有 Sizing。'}
+            high=best_high
+            row.UpperBound=float(high)
+            target.Generate()
+            ids=sorted(set(int(i) for i in target.Location.Ids))
+            auto_limited=bool(high<requested_high-1e-8)
+            if len(ids)>analysis_cap:
+                raise RuntimeError(u'自适应区间复核数量超过 4096；未保存不安全标记。')
+        else:
+            target.Generate()
+            ids=sorted(set(int(i) for i in target.Location.Ids))
         if len(ids)>50000:
             target.Delete()
-            return {'status':'too_many_elements','kind':'skew_range','created_groups':[],
+            return {'status':'too_many_elements','kind':('skew_range' if metric_name=='Skewness' else 'element_quality_range'),'created_groups':[],
                     'range_min':low,'range_max':high,'worksheet_count':len(ids),
-                    'message':u'精确筛选到 %d 个单元，超过 32GB 设备的 50000 单元自动标记保护上限，已撤销本次新选择组；请缩窄偏度区间。' % len(ids)}
+                    'message':u'精确筛选到 %d 个单元，超过 32GB 设备的 50000 单元标记保护上限，已撤销本次新选择组；请缩窄区间。' % len(ids)}
         if not ids:
             target.Delete()
-            return {'status':'zero_elements','kind':'skew_range','created_groups':[],
+            return {'status':'zero_elements','kind':('skew_range' if metric_name=='Skewness' else 'element_quality_range'),'created_groups':[],
                     'range_min':low,'range_max':high,'worksheet_count':0,
-                    'message':u'当前网格此偏度区间未选中单元。若最大偏度位于区间内，请在 Meshing 检查 Mesh Metric/Worksheet 数据是否已刷新。'}
+                    'message':u'当前网格此指标区间未选中单元。请在 Meshing 检查 Mesh Metric/Worksheet 数据是否已刷新。'}
         # Ensure the returned object is still a genuine Mesh Element selection.
         loc_type=getattr(target.Location,'SelectionType',None)
         selection_enum=globals().get('SelectionTypeEnum',None)
         selection_mesh=getattr(selection_enum,'MeshElements',None)
         if loc_type is not None and selection_mesh is not None and loc_type != selection_mesh:
             raise RuntimeError(u'Named Selection 返回的实体不是 Mesh Elements；拒绝错误标记')
-        return {'status':'created','kind':'skew_range','metric':'Skewness',
-                'range_min':low,'range_max':high, 'worksheet_count':len(ids),
-                'selection_source':'named_selection_worksheet_skewness_range',
+        return {'status':'created','kind':('skew_range' if metric_name=='Skewness' else 'element_quality_range'),'metric':metric_name,
+                'range_min':low,'range_max':high,'requested_range_max':requested_high,
+                'auto_limited':auto_limited,'worksheet_attempts':attempts,
+                'worksheet_count':len(ids),
+                'selection_source':('named_selection_worksheet_skewness_range' if metric_name=='Skewness' else 'named_selection_worksheet_element_quality_range'),
                 'created_groups':[utext(target.Name)],
                 'selected_element_ids_sample':ids[:32],
-                'message':u'已按 Mesh Element → Skewness 区间 %.3g～%.3g 创建 %d 单元的独立选择组。后续方案将读取这批单元，不依赖默认警告数。' % (low,high,len(ids))}
+                'message':(u'原申请 %.5g～%.5g；为避免超载，自动优先选择最差质量端 %.5g～%.5g（%d 单元），其余区间未处理；请先生成局部方案并审核。' % (low,requested_high,low,high,len(ids)) if auto_limited else
+                           u'已按 Mesh Element → %s 区间 %.3g～%.3g 创建 %d 单元的独立选择组；后续使用同一安全审核流程。' % (metric_name,low,high,len(ids)))}
     except Exception:
         # Limit cleanup to the single NEW group created by this transaction.
         try: target.Delete()
         except Exception: pass
         raise
+
+
+def mark_threshold_skew_elements(low=0.90,high=1.00):
+    return mark_threshold_quality_elements(low,high,'Skewness')
+
+
+def mark_threshold_element_quality_elements(low=0.00,high=0.10):
+    return mark_threshold_quality_elements(low,high,'ElementQuality')
 
 
 def mark_official_failed_elements():
@@ -854,6 +1050,9 @@ def assess_quality():
                 'reason':'Orthogonal quality measurement not yet attempted',
                 'action':'Verify native Orthogonal Quality in Meshing or Fluent'}
     q['orthogonal_quality_diagnostic']=diagnostic
+    eq_diagnostic={'status':'not_measured', 'interface':'MeshMetricType.ElementQuality',
+                   'reason':'Element Quality has not been measured'}
+    q['element_quality_diagnostic']=eq_diagnostic
     original=None
     original_readable=False
     try:
@@ -876,6 +1075,27 @@ def assess_quality():
                                'source':'ACT MeshMetricType.Skewness'}
         except Exception as e:
             q['warnings'].append('Skewness unavailable: '+utext(e))
+        # Element Quality is distinct from Skewness/Orthogonal Quality.
+        # Some ACT versions do not expose this enum in their Python context;
+        # never substitute a shape proxy or 1-Skewness.
+        element_enum=getattr(MeshMetricType,'ElementQuality',None)
+        if element_enum is None:
+            eq_diagnostic['status']='enum_not_exposed'
+            eq_diagnostic['reason']='ACT MeshMetricType.ElementQuality not exposed in this session'
+        else:
+            try:
+                m.MeshMetric=element_enum
+                eq_values=[float(m.Minimum.Value), float(m.Maximum.Value), float(m.Average.Value)]
+                if any(math.isnan(v) or math.isinf(v) or v<0 or v>1 for v in eq_values) or not (eq_values[0]<=eq_values[2]<=eq_values[1]):
+                    raise ValueError('Element Quality statistics invalid or outside 0..1: '+utext(eq_values))
+                q['element_quality']={'min':eq_values[0], 'max':eq_values[1],
+                                      'mean':eq_values[2], 'source':'ACT MeshMetricType.ElementQuality'}
+                eq_diagnostic['status']='measured'
+                eq_diagnostic['reason']='Native ACT Element Quality metric returned valid statistics'
+            except Exception as e:
+                eq_diagnostic['status']='metric_read_failed'
+                eq_diagnostic['reason']=utext(e)[:350]
+                q['warnings'].append('ElementQuality ACT read failed: '+utext(e))
         orthogonal_enum=getattr(MeshMetricType,'OrthogonalQuality',None)
         if orthogonal_enum is None:
             diagnostic['status']='enum_not_exposed'
@@ -912,6 +1132,296 @@ def assess_quality():
     q['current_mesh_only']=True
     return q
 
+
+
+
+def collect_worksheet_quality_bounds(expected, official_quality, probe_orthogonal=True):
+    """EXPLICIT opt-in, transient ACT Worksheet threshold probes.
+
+    Unlike the quick read-only quality check, this deep diagnostic creates ONE
+    temporary Mesh Element Named Selection, repeatedly generates its selection,
+    and deletes ONLY that object in finally. It never alters Worksheet warning
+    limits, generates a mesh, or touches Sizing/existing user selections.
+
+    Strict >0.90/>0.95 counts are exact from ACT's GreaterThan criterion.
+    Nearest-rank P95 and minimum orthogonal quality are BOUNDS, not exact scalar
+    metrics. The source, criterion, tolerance and cleanup status are recorded.
+    """
+    diagnostic={'status':'unavailable', 'source':'ACT Named Selection Worksheet threshold probe',
+                'reason':'not attempted', 'temporary_selection_cleanup':'not_created'}
+    if int(expected)<=0 or int(Model.Mesh.Elements)!=int(expected):
+        diagnostic['reason']='Mesh element count unavailable/changed before probe'
+        return None,None,diagnostic
+    try:
+        from Ansys.Mechanical.DataModel.Enums import (SelectionType,
+            SelectionCriterionType, SelectionOperatorType, GeometryDefineByType)
+    except ImportError:
+        SelectionType=globals().get('SelectionType')
+        SelectionCriterionType=globals().get('SelectionCriterionType')
+        SelectionOperatorType=globals().get('SelectionOperatorType')
+        GeometryDefineByType=globals().get('GeometryDefineByType')
+    try:
+        entity=_selection_enum(SelectionType,('MeshElement','MeshElements'),u'Mesh Element 类型')
+        skew=_selection_enum(SelectionCriterionType,('Skewness',),u'Skewness Worksheet 条件')
+        greater=_selection_enum(SelectionOperatorType,('GreaterThan',),u'严格大于')
+        sheet=_selection_enum(GeometryDefineByType,('Worksheet',),u'Worksheet')
+    except Exception as exc:
+        diagnostic['reason']='Required strict threshold enums unavailable: '+utext(exc)[:240]
+        return None,None,diagnostic
+    target=None
+    skew_data=None
+    orth_data=None
+    probe_count=0
+    cleanup_ok=False
+    try:
+        cancellation_checkpoint()
+        target=Model.AddNamedSelection()
+        # This group exists only within this call. Never look up, edit or
+        # delete a pre-existing selection, even if names happen to match.
+        target.Name='AutoMesh_Temporary_QProbe_%d' % int(time.time()*1000)
+        target.ScopingMethod=sheet
+        criteria=target.GenerationCriteria
+        criteria.Add(None)
+        row=criteria[0]
+        row.EntityType=entity
+        row.Criterion=skew
+        row.Operator=greater
+
+        def count_where(metric,operator,threshold):
+            # Helpers are reused so each generation has bounded live objects.
+            cancellation_checkpoint()
+            row.EntityType=entity
+            row.Criterion=metric
+            row.Operator=operator
+            row.Value=float(threshold)
+            target.Generate()  # Named Selection only: NOT Mesh.GenerateMesh()
+            if int(Model.Mesh.Elements)!=int(expected):
+                raise RuntimeError('Mesh changed during worksheet threshold probe')
+            ids=target.Location.Ids
+            # Prefer native ICollection.Count where exposed, but accept native
+            # array length. Never copy a multi-million-ID list to Python.
+            try: n=int(ids.Count)
+            except (AttributeError,TypeError): n=int(len(ids))
+            if n<0 or n>int(expected):
+                raise RuntimeError('ACT threshold count outside current mesh')
+            return n
+
+        a=count_where(skew,greater,.90)
+        b=count_where(skew,greater,.95)
+        probe_count+=2
+        if b>a:
+            raise RuntimeError('Non-monotonic native skewness threshold counts')
+        known=official_quality.get('skewness',{})
+        if known:
+            hi=float(known.get('max',1.))
+            if hi<=.90 and a>0 or hi<=.95 and b>0:
+                raise RuntimeError('Worksheet threshold counts contradict ACT Skewness maximum')
+        # For nearest-rank P95, the rank is ceil(.95*N).
+        # count(value > t) <= N-rank => P95 <= t; otherwise P95 > t.
+        upper_rank=int(expected)-int(math.ceil(.95*int(expected)))
+        lo,hi=0.,1.
+        last_count=int(expected)
+        for i in range(10):
+            mid=(lo+hi)*.5
+            n=count_where(skew,greater,mid)
+            probe_count+=1
+            if n>upper_rank: lo=mid
+            else: hi=mid
+            emit_progress(72+i,'Worksheet 偏度分位数','第 %d/10 次阈值探测；P95 只报告精度界限' % (i+1))
+        skew_data={'status':'bounded', 'method':'native_worksheet_threshold',
+                   'source':'ACT Named Selection Worksheet MeshElement Skewness strict GreaterThan',
+                   'mesh_elements':int(expected), 'above_0_90':a,'above_0_95':b,
+                   'p95_lower':lo,'p95_upper':hi,'p95_precision':hi-lo,
+                   'p95_definition':'nearest_rank', 'threshold_counts_exact':True}
+        if probe_orthogonal:
+            orth=getattr(SelectionCriterionType,'OrthogonalQuality',None)
+            less=getattr(SelectionOperatorType,'LessThan',None)
+            if orth is None or less is None:
+                diagnostic['orthogonal_reason']='Worksheet OrthogonalQuality/LessThan criterion unavailable'
+            else:
+                # Minimum OQ is not reported as exact: this is a bounded
+                # native Worksheet result and may differ from Fluent's metric.
+                lo,hi=0.,1.
+                for i in range(10):
+                    mid=(lo+hi)*.5
+                    n=count_where(orth,less,mid)
+                    probe_count+=1
+                    if n>0: hi=mid
+                    else: lo=mid
+                    emit_progress(83+i,'Worksheet 正交质量','第 %d/10 次阈值探测；不将区间冒充精确最小值' % (i+1))
+                orth_data={'status':'bounded', 'method':'native_worksheet_threshold',
+                           'source':'ACT Named Selection Worksheet MeshElement OrthogonalQuality strict LessThan',
+                           'mesh_elements':int(expected), 'min_lower':lo,'min_upper':hi,
+                           'precision':hi-lo}
+        diagnostic.update(status='completed',reason='Native Worksheet threshold queries completed',
+                          probe_count=probe_count)
+    except Exception as exc:
+        diagnostic.update(status='failed', reason=utext(exc)[:360],probe_count=probe_count)
+        skew_data=None
+        orth_data=None
+    finally:
+        if target is not None:
+            try:
+                target.Delete()
+                cleanup_ok=True
+            except Exception as exc:
+                diagnostic['cleanup_error']=utext(exc)[:250]
+        diagnostic['temporary_selection_cleanup']='verified_deleted' if cleanup_ok else ('failed' if target is not None else 'not_created')
+        if target is not None and not cleanup_ok:
+            # Never present a successful result while a temporary selection
+            # might remain in the user's model tree.
+            skew_data=None
+            orth_data=None
+            diagnostic['status']='cleanup_failed'
+            diagnostic['reason']='Temporary Worksheet selection cleanup failed; inspect tree before further actions'
+    return skew_data,orth_data,diagnostic
+
+
+def collect_native_skewness_distribution(expected, official_quality, state):
+    """Best-effort STRICT read-only ACT per-element skewness ingestion.
+
+    Uses the public GetResultsData / MESH_ / GetElementValues path only when
+    the exact SKEWNESS result component exists. It is intentionally opt-in:
+    it can take time on multi-million-element meshes and has NOT been verified
+    in a real Windows Meshing session. Never infer a distribution from mean/max.
+    """
+    unavailable={'status':'unavailable', 'reason':'No verified native per-element Skewness source'}
+    try:
+        native=official_quality.get('skewness',{})
+        if not native or native.get('source')!='ACT MeshMetricType.Skewness':
+            return None,dict(unavailable,reason='Global official Skewness was not measured')
+        analyses=ExtAPI.DataModel.Project.Model.Analyses
+        if len(analyses)==0:
+            return None,dict(unavailable,reason='No active Analysis to expose MESH_ element result')
+        source=analyses[0].GetResultsData()
+        mesh_result=source.GetResult('MESH_')
+        components=[utext(c).upper().strip() for c in mesh_result.Components]
+        if 'SKEWNESS' not in components:
+            return None,dict(unavailable,reason='MESH_ has no exact native SKEWNESS component')
+        mesh_result.SelectComponents(['SKEWNESS'])
+        mesh_data=ExtAPI.DataModel.MeshDataByName('Global')
+        ids=mesh_data.ElementIds
+        count=int(len(ids))
+        if count!=int(expected) or count<=0:
+            return None,dict(unavailable,reason='Native element IDs do not cover the current mesh')
+        # Official MeshRegionById is read-only. Region data are OPTIONAL and
+        # accepted only if every element belongs to exactly one current Body.
+        # Never infer Body identity from element positions or stale IDs.
+        body_of={}
+        body_totals={}
+        if hasattr(mesh_data,'MeshRegionById'):
+            try:
+                for body in state.get('bodies',[]):
+                    body_id=int(body['id'])
+                    region=mesh_data.MeshRegionById(body_id)
+                    region_ids=region.ElementIds
+                    n=int(len(region_ids))
+                    if n<=0:raise ValueError('Empty region')
+                    for j in range(n):
+                        eid=int(region_ids[j])
+                        if eid in body_of:raise ValueError('Overlapping Body regions')
+                        body_of[eid]=body_id
+                    body_totals[body_id]=n
+                if len(body_of)!=count:
+                    body_of={}
+                    body_totals={}
+            except Exception:
+                body_of={}
+                body_totals={}
+        body_acc={}
+        for body_id,n in body_totals.items():
+            size=n-int(math.ceil(.95*n))+1
+            body_acc[body_id]={'count':0,'total':0.,'max':0.,'over90':0,'over95':0,
+                               'tail':[],'tail_size':size,'required':n}
+        # Counted exact percentiles are memory-conservative: keep only the top
+        # 5% values needed for the nearest-rank P95, rather than a full array.
+        top_size=count-int(math.ceil(.95*count))+1
+        tail=[]
+        edges=[0.,.1,.2,.3,.4,.5,.6,.7,.8,.9,.95,1.]
+        bins=[0]*(len(edges)-1)
+        over90=over95=0
+        minimum=1.
+        maximum=0.
+        total=0.
+        seen=set()
+        batch_size=2048
+        for offset in range(0,count,batch_size):
+            cancellation_checkpoint()
+            block=[int(ids[j]) for j in range(offset,min(count,offset+batch_size))]
+            if len(block)==0:
+                return None,dict(unavailable,reason='Unexpected empty native element-ID block')
+            raw=list(mesh_result.GetElementValues(block))
+            if len(raw)!=len(block):
+                return None,dict(unavailable,reason='Native metric values do not match requested element IDs')
+            for element_id,original in zip(block,raw):
+                if element_id<=0 or element_id in seen:
+                    return None,dict(unavailable,reason='Invalid/duplicate native mesh element ID')
+                seen.add(element_id)
+                # Non-scalar components are not the requested single Skewness.
+                try:
+                    value=float(original)
+                except Exception:
+                    return None,dict(unavailable,reason='Native metric component is not one scalar per element')
+                if math.isnan(value) or math.isinf(value) or value<0. or value>1.:
+                    return None,dict(unavailable,reason='Native Skewness contains invalid values')
+                minimum=min(minimum,value)
+                maximum=max(maximum,value)
+                total+=value
+                if value>.90:over90+=1
+                if value>.95:over95+=1
+                bucket=bisect.bisect_left(edges[1:],value)
+                if bucket>=len(bins):
+                    return None,dict(unavailable,reason='Native Skewness lies outside histogram range')
+                bins[bucket]+=1
+                if len(tail)<top_size:heapq.heappush(tail,value)
+                elif value>tail[0]:heapq.heapreplace(tail,value)
+                if body_acc:
+                    body_id=body_of.get(element_id)
+                    if body_id is None:
+                        # Reject partial/ambiguous Body mapping, but retain
+                        # the independent validated global distribution.
+                        body_acc={}
+                    else:
+                        body=body_acc[body_id]
+                        body['count']+=1
+                        body['total']+=value
+                        body['max']=max(body['max'],value)
+                        if value>.90:body['over90']+=1
+                        if value>.95:body['over95']+=1
+                        body_tail=body['tail']
+                        if len(body_tail)<body['tail_size']:heapq.heappush(body_tail,value)
+                        elif value>body_tail[0]:heapq.heapreplace(body_tail,value)
+            emit_progress(72+int(19.*(offset+len(block))/count),'读取逐单元偏度',
+                '已校验 %d / %d 原生单元；未生成或修改网格' % (offset+len(block),count))
+        mean=total/count
+        # A native result component that uses a different definition, scope or
+        # mesh MUST NOT be presented as the existing ACT MeshMetric Skewness.
+        for field,observed in (('min',minimum),('max',maximum),('mean',mean)):
+            if abs(float(native[field])-observed)>0.0001:
+                return None,dict(unavailable,reason='MESH_ Skewness disagrees with ACT global %s' % field)
+        if len(seen)!=count or sum(bins)!=count or len(tail)!=top_size:
+            return None,dict(unavailable,reason='Native distribution failed completeness validation')
+        histogram=[{'lower':edges[i], 'upper':edges[i+1], 'count':bins[i]} for i in range(len(bins))]
+        distribution={'status':'complete', 'method':'native_per_element',
+            'source':'ACT MESH_ SKEWNESS GetElementValues (cross-checked with MeshMetric)',
+            'sample_count':count, 'p95':float(tail[0]),
+            'above_0_90':over90, 'above_0_95':over95, 'bins':histogram}
+        if body_acc and sum(x['count'] for x in body_acc.values())==count:
+            complete=True
+            for data in body_acc.values():
+                if data['count']!=data['required'] or len(data['tail'])!=data['tail_size']:
+                    complete=False
+            if complete:
+                distribution['body_stats']=[{
+                    'body_id':body_id, 'count':value['count'],
+                    'mean':value['total']/value['count'], 'max':value['max'],
+                    'p95':float(value['tail'][0]),
+                    'above_0_90':value['over90'], 'above_0_95':value['over95']}
+                    for body_id,value in sorted(body_acc.items())]
+        return distribution, {'status':'complete','source':distribution['source'],
+                              'samples':count,'body_regions':len(distribution.get('body_stats',[]))}
+    except Exception as e:
+        return None,dict(unavailable,reason='Native element metric API unavailable/failed: '+utext(e)[:180])
 
 
 def geometry_sizing_candidates(state, base_mm):
@@ -1488,7 +1998,10 @@ def automatic_mesh(job, state):
     }
     quality = assess_quality()
     summary.update({'seconds':round(time.time()-start,1),
-                    'quality':quality, 'mesh_elements':int(m.Elements)})
+                    'quality':quality, 'mesh_elements':int(m.Elements),
+                    'mesh_signature':mesh_state_signature(state),
+                    'quality_definition':'automesh-act-quality-v1',
+                    'quality_source':'ACT 当前 Meshing 实测'})
     if quality.get('skewness',{}).get('max',0)>0.95:
         summary['worksheet_diagnostics']=quality_worksheet_summary()
     skew = quality.get('skewness',{}).get('max')
@@ -1950,8 +2463,9 @@ def validate_existing_named_specs(job,state,allow_empty=False):
     for name in sorted(requested):
         if not isinstance(name,(str,type(u''))):
             raise RuntimeError('Invalid Named Selection name')
-        if utext(name).strip().lower() in ('inlet','outlet'):
-            raise RuntimeError('inlet/outlet are solver boundaries and excluded from automatic local sizing')
+        # inlet/outlet are legitimate user-owned face Named Selections.
+        # Never rename them or change SendToSolver. Verify their live face
+        # scopes and all existing control conflicts before creating Sizing.
         ns=named.get(name)
         original_name=name
         if ns is None:
@@ -1992,6 +2506,8 @@ def validate_existing_named_specs(job,state,allow_empty=False):
         used.update(ids)
         if utext(name).startswith('AM_') and bool(ns.SendToSolver):
             raise RuntimeError('AutoMesh auxiliary Named Selection is set SendToSolver=True: '+utext(name))
+        if utext(name).strip().lower() in ('inlet','outlet') and not bool(ns.SendToSolver):
+            raise RuntimeError('Solver boundary Named Selection must retain SendToSolver=True: '+utext(name))
         try:
             # The user's setting is keyed by the originally submitted name.
             # An exact-scope rename changes `name`, not that input key.
@@ -2010,6 +2526,21 @@ def validate_existing_named_specs(job,state,allow_empty=False):
         for obj in Model.Mesh.Children:
             if _is_sizing(obj) and _sizing_linked_to(obj,ns):
                 linked.append(obj)
+        if utext(name).strip().lower() in ('inlet','outlet'):
+            for obj in Model.Mesh.Children:
+                if not _is_sizing(obj) or obj in linked or _is_control_suppressed(obj):
+                    continue
+                try:
+                    other_ids=_effective_sizing_ids(obj)
+                except Exception:
+                    # Ambiguous scopes are not silently treated as overlap.
+                    continue
+                # Only treat direct known face IDs as a possible conflict; a
+                # Body-ID based sphere must not be mistaken for a face Sizing.
+                overlapping=(set(other_ids) & ids & current_faces)
+                if overlapping:
+                    raise RuntimeError('inlet/outlet existing Sizing scope conflict: '+utext(name)+
+                        ' intersects '+utext(obj.Name)+' on %d faces; inspect before publishing'%len(overlapping))
         if len(linked)>1:
             raise RuntimeError('More than one existing Sizing is bound to '+utext(name)+'; resolve duplicates in Meshing')
         if linked:
@@ -2057,7 +2588,15 @@ def publish_existing_named_sizing(job,state):
                 and (utext(x['ns_name']),utext(c.Name)) in previous_owned):
             owned[c.Name]=x
     requested_pairs = set((utext(x['ns_name']),utext(x['sizing_name'])) for x in specs)
-    retired = [{'ns':ns,'sizing':cname} for ns,cname in sorted(previous_owned-requested_pairs)]
+    # Boundary publication is additive: introducing inlet/outlet MUST NOT
+    # silently suppress other previously published AutoMesh local controls.
+    # Even for ordinary sync, inlet/outlet controls are persistent solver
+    # boundaries and cannot be auto-retired by an unrelated selection.
+    boundary_mode=any(x['ns_name'].strip().lower() in ('inlet','outlet') for x in specs)
+    retained_active = sorted((ns,cname) for ns,cname in previous_owned-requested_pairs
+                             if boundary_mode or ns.strip().lower() in ('inlet','outlet'))
+    retired = [{'ns':ns,'sizing':cname} for ns,cname in sorted(previous_owned-requested_pairs)
+               if not boundary_mode and ns.strip().lower() not in ('inlet','outlet')]
     items=[]
     retired_names=set(item['sizing'] for item in retired)
     for c in Model.Mesh.Children:
@@ -2076,6 +2615,13 @@ def publish_existing_named_sizing(job,state):
     # an unrelated user Sizing even if it has an AutoMesh-looking name.
     live_named=_named_objects()
     live_sizing=_sizing_objects()
+    for nsname,cname in retained_active:
+        ctrl=live_sizing.get(cname)
+        ns=live_named.get(nsname)
+        if (ctrl is None or ns is None or not _is_sizing(ctrl) or
+                not _sizing_linked_to(ctrl,ns)):
+            raise RuntimeError('Retained existing Sizing scope is missing/changed: '+cname+
+                               '; refresh the full geometry scan and review manually')
     retired_actions=[]
     for item in retired:
         c=live_sizing.get(item['sizing'])
@@ -2136,7 +2682,8 @@ def publish_existing_named_sizing(job,state):
                     'global_applied':False,'base_mm':base,'prepared':[
             {'ns':r['named_selection'],'sizing':r['sizing']} for r in rows
             if r['sizing_status']!='preserved_manual_unmanaged' and
-               r['sizing']==existing_named_sizing_name(r['named_selection'])],
+               r['sizing']==existing_named_sizing_name(r['named_selection'])]+
+            [{'ns':ns,'sizing':cname} for ns,cname in retained_active],
             'retired_managed':retired})
     except Exception as exc:
         errors=[]
@@ -2182,6 +2729,29 @@ def _mesh_control_digest():
         except Exception:info.append((key,'unreadable'))
     return hashlib.sha1(json.dumps(sorted(info,key=lambda x:utext(x[0])),
                      ensure_ascii=True,sort_keys=True).encode('utf-8')).hexdigest()
+
+
+def mesh_state_signature(state=None):
+    """Best-effort identity for stale-data detection, not topology proof."""
+    if state is None:
+        state = {}
+    mesh = state.get('mesh') or {}
+    try: elements = int(Model.Mesh.Elements)
+    except Exception: elements = int(float(mesh.get('Elements', 0) or 0))
+    try: nodes = int(Model.Mesh.Nodes)
+    except Exception: nodes = int(float(mesh.get('Nodes', 0) or 0))
+    try: object_state = utext(Model.Mesh.ObjectState)
+    except Exception: object_state = 'unavailable'
+    payload = {
+        'project': state.get('project') or utext(ExtAPI.DataModel.Project.ProjectDirectory),
+        'geometry_quick_signature': state.get('geometry_quick_signature') or '',
+        'elements': elements,
+        'nodes': nodes,
+        'object_state': object_state,
+        'mesh_control_digest': _mesh_control_digest(),
+        'definition': 'automesh-mesh-state-v2',
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=True).encode('utf-8')).hexdigest()
 
 
 def mesh_reference_status(state):
@@ -2313,8 +2883,6 @@ def generate_reviewed(job, state):
             if not 0.5<=mm<=5.0 or not 1.5<=radius<=MAX_RADIUS_MM:
                 raise RuntimeError('Quality-hotspot sphere size edited outside conservative review range: '+name)
             qr_proxy+=(4.0/3.0)*math.pi*(radius/mm)**3
-            if qr_proxy>MAX_CELL_PROXY:
-                raise RuntimeError('Quality-hotspot cumulative refinement proxy exceeds 32GB conservative limit')
             qr_controls.append(name)
             continue
         if _is_sizing(other) and _is_control_suppressed(other):
@@ -2395,6 +2963,9 @@ def generate_reviewed(job, state):
             'seconds':round(time.time()-started,2),'mesh_elements':int(Model.Mesh.Elements),
             'quality':quality,'quality_status':verdict['status'],
             'quality_gate':verdict['quality_gate'],'next_action':verdict['reason'],
+            'mesh_signature':mesh_state_signature(state),
+            'quality_definition':'automesh-act-quality-v1',
+            'quality_source':'ACT 当前 Meshing 实测',
             'boundary':boundary, 'manual_sizing_preserved':True,
             'unestimated_non_sizing_controls':unchecked,
             'reference_note':reference_note,
@@ -2421,7 +2992,12 @@ except OSError:
     raise RuntimeError('This exact job already started; refuses duplicate task')
 os.write(fd, str(time.time()).encode('ascii'))
 os.close(fd)
-result = {'job_id': job.get('job_id'), 'phase': job.get('phase'), 'status': 'started',
+result = {'job_id': job.get('job_id'),
+          'logical_job_id': job.get('logical_job_id') or job.get('job_id'),
+          'attempt_id': job.get('attempt_id') or job.get('job_id'),
+          'attempt_number': int(job.get('attempt_number') or 1),
+          'retry_of_job_id': job.get('retry_of_job_id',''),
+          'phase': job.get('phase'), 'status': 'started',
           'stage': 'Meshing ACT command accepted',
           'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')}
 write(RESULT_FILE, result)
@@ -2432,16 +3008,34 @@ try:
     # A failed readiness check must preserve the last successful snapshot.
     # Guard all phases, not just inspect, before touching live Meshing state.
     Model = resolve_current_model(globals().get('Model'), ExtAPI)
-    if phase in ('inspect','auto_onepass','generate_reviewed','export','publish_existing_sizing'):
+    if phase == 'sync_status':
+        state=lightweight_status()
+    elif phase in ('inspect','auto_onepass','generate_reviewed','publish_existing_sizing'):
         state=snapshot()
-    elif phase in ('quality_check','diagnose','mark_failed','mark_warning','mark_high_skew','warning_refine_preview','warning_refine_publish'):
+    elif phase == 'export':
+        # Reuse the immutable full geometry scan while checking the current
+        # geometry identity. After a legitimate Named/Sizing publication the
+        # old named inventory may differ; the export guard separately checks
+        # actual live inlet/outlet scopes, SendToSolver and current quality.
+        state=read(SNAPSHOT_FILE)
+        current=quick_geometry_identity()
+        ensure_current(job,current)
+        if state.get('fingerprint')!=current['fingerprint'] or state.get('project')!=current['project']:
+            raise RuntimeError('Geometry changed after scan; re-inspect before export')
+    elif phase in ('quality_check','diagnose') and (not job.get('geometry_fingerprint') or not os.path.isfile(SNAPSHOT_FILE)):
+        # Read-only quality measurements can run without a full geometry
+        # snapshot. No geometry-derived/write operation may use this state.
+        state=lightweight_status()
+    elif phase in ('quality_check','diagnose','mark_failed','mark_warning','mark_high_skew','mark_low_element_quality','warning_refine_preview','warning_refine_publish'):
         state=read_only_verified_snapshot(job)
     else:
         state=verify_previous_snapshot(job)
     cancellation_checkpoint()
     if phase in ('inspect','auto_onepass'):
         write(SNAPSHOT_FILE, state)
-    if phase == 'inspect':
+    if phase == 'sync_status':
+        result['summary'] = state
+    elif phase == 'inspect':
         result['summary'] = {'project': state['project'], 'body_count': len(state['bodies']),
                              'face_count': len(state['faces']), 'named_count': len(state['named']),
                              'control_count': len(state['controls']), 'geometry_unit': state['geometry_unit'],
@@ -2472,9 +3066,12 @@ try:
         if quick['project'] != state['project'] or quick['fingerprint'] != state['fingerprint']:
             raise RuntimeError('Geometry changed during one-pass analysis; no mesh modification permitted')
         result['summary']=automatic_mesh(job,state)
-    elif phase != 'inspect':
+    elif phase != 'inspect' and phase != 'sync_status':
         cancellation_checkpoint()
-        ensure_current(job, state)
+        if state.get('fingerprint'):
+            ensure_current(job, state)
+        elif phase not in ('quality_check', 'diagnose'):
+            raise RuntimeError('当前操作需要经过完整几何身份核验的快照；请先执行完整几何扫描')
         if phase == 'rename_auxiliary':
             emit_progress(68,'中文化辅助命名','仅更改未绑定 Sizing 的旧版 AM_* 组')
             result['summary']=rename_existing_auxiliary(job,state)
@@ -2511,9 +3108,33 @@ try:
             count=int(Model.Mesh.Elements)
             if count<=0:
                 result['summary']={'mesh_elements':0,'quality_status':'not_measured',
-                    'quality_gate':'no_mesh','next_action':'当前工程没有可用网格；无法测量网格质量'}
+                    'quality_gate':'no_mesh','next_action':'当前工程没有可用网格；无法测量网格质量',
+                    'project':state.get('project',''),
+                    'geometry_fingerprint':state.get('fingerprint',''),
+                    'geometry_identity_verified':bool(state.get('fingerprint')),
+                    'mesh_signature':mesh_state_signature(state),
+                    'quality_definition':'automesh-act-quality-v1'}
             else:
                 quality=assess_quality()
+                if job.get('deep_native_skewness') is True:
+                    # Separate opt-in path; no hidden multi-million-element scan
+                    # during the ordinary fast quality check.
+                    distribution,detail=collect_native_skewness_distribution(count,quality,state)
+                    quality['skewness_distribution_diagnostic']=detail
+                    if distribution is not None:
+                        quality['skewness_distribution']=distribution
+                    else:
+                        # The deep scan is an explicit user action. Native
+                        # MESH_/SKEWNESS is not exposed on every ACT session;
+                        # retry with one transient Worksheet selection, without
+                        # touching existing controls or mesh generation.
+                        thresholds,orth_bound,probe_detail=collect_worksheet_quality_bounds(
+                            count,quality,probe_orthogonal=('orthogonal_quality' not in quality))
+                        quality['worksheet_threshold_probe_diagnostic']=probe_detail
+                        if thresholds is not None:
+                            quality['skewness_threshold_statistics']=thresholds
+                        if orth_bound is not None:
+                            quality['orthogonal_quality_bound']=orth_bound
                 verdict=reviewed_quality_gate(quality)
                 result['summary']={'mesh_elements':count,'quality':quality,
                     'quality_gate':verdict['quality_gate'],
@@ -2521,8 +3142,12 @@ try:
                     'next_action':verdict['reason'],
                     'worksheet_diagnostics':quality_worksheet_summary(),
                     'quality_source':'ACT 当前 Meshing 实测（未执行 GenerateMesh）',
-                    'geometry_fingerprint':state['fingerprint'], 'project':state['project'],
-                    'mesh_reference':mesh_reference_status(state)}
+                    'geometry_fingerprint':state.get('fingerprint', ''), 'project':state['project'],
+                    'geometry_quick_signature':state.get('geometry_quick_signature', ''),
+                    'geometry_identity_verified':bool(state.get('fingerprint')),
+                    'mesh_signature':mesh_state_signature(state),
+                    'quality_definition':'automesh-act-quality-v1',
+                    'mesh_reference':mesh_reference_status(state) if state.get('fingerprint') else {'status':'not_checked_without_geometry_snapshot'}}
         elif phase == 'quality':
             result['summary'] = assess_quality()
         elif phase == 'mark_failed':
@@ -2542,6 +3167,16 @@ try:
                 'groups':[]})
             result['summary']=mark_threshold_skew_elements(job.get('skew_min',0.90),job.get('skew_max',1.00))
             warning_register_marker(result['summary'],state)
+        elif phase == 'mark_low_element_quality':
+            emit_progress(69,'定位低 Element Quality 单元','按原生 ACT Mesh Element → ElementQuality 指标筛选，非质量代理')
+            cancellation_checkpoint()
+            write(_warning_path(_WARNING_MARKER), {'status':'pending',
+                'metric':'ElementQuality', 'range_min':job.get('quality_min',0.0),
+                'range_max':job.get('quality_max',0.10),'project':state['project'],
+                'fingerprint':state['fingerprint'],'groups':[]})
+            result['summary']=mark_threshold_element_quality_elements(
+                job.get('quality_min',0.0),job.get('quality_max',0.10))
+            warning_register_marker(result['summary'],state)
         elif phase == 'warning_refine_preview':
             emit_progress(70,'定位警告单元','从刚标记的官方 Worksheet 组提取坐标和对应几何体')
             cancellation_checkpoint()
@@ -2554,17 +3189,28 @@ try:
             count=int(Model.Mesh.Elements)
             if count<=0:
                 result['summary']={'mesh_elements':0,
+                  'quality_status':'not_measured','quality_gate':'no_mesh',
                   'worksheet_diagnostics':{'status':'no_mesh','metrics':[]},
                   'element_probe':{'status':'no_mesh','checked_element_count':0,
                                    'sampling_fraction':0,'samples':[]},
-                  'next_action':'No generated mesh exists; generate or load mesh first'}
+                  'next_action':'No generated mesh exists; generate or load mesh first',
+                  'project':state.get('project',''),
+                  'geometry_fingerprint':state.get('fingerprint',''),
+                  'geometry_quick_signature':state.get('geometry_quick_signature',''),
+                  'geometry_identity_verified':bool(state.get('fingerprint')),
+                  'mesh_signature':mesh_state_signature(state),
+                  'quality_definition':'automesh-act-quality-v1'}
             else:
                 emit_progress(66,'诊断网格','读取官方质量统计；准备定位采样网格元素')
                 results={'mesh_elements':count, 'quality':assess_quality(),
                          'quality_gate':None,
                          'worksheet_diagnostics':quality_worksheet_summary(),
-                         'mesh_reference':mesh_reference_status(state),
-                         'geometry_fingerprint':state['fingerprint'],
+                         'mesh_reference':mesh_reference_status(state) if state.get('fingerprint') else {'status':'not_checked_without_geometry_snapshot'},
+                         'geometry_fingerprint':state.get('fingerprint', ''),
+                         'geometry_quick_signature':state.get('geometry_quick_signature',''),
+                         'geometry_identity_verified':bool(state.get('fingerprint')),
+                         'mesh_signature':mesh_state_signature(state),
+                         'quality_definition':'automesh-act-quality-v1',
                          'project':state['project']}
                 verdict=reviewed_quality_gate(results['quality'])
                 results['quality_gate']=verdict['quality_gate']
@@ -2579,15 +3225,28 @@ try:
         else:
             raise ValueError('Unsupported phase')
     result['status'] = 'ok'
+    result['completed_at'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
+    result['completed_at_unix'] = time.time()
     emit_progress(100,'任务完成','操作结束，结果已写入报告')
 except AutoMeshCancelled as e:
     result['status'] = 'cancelled'
+    result['completed_at'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
+    result['completed_at_unix'] = time.time()
     result['error'] = utext(e)
     emit_progress(None,'已安全取消','ACT 在安全检查点确认取消，未强制结束 Meshing 进程')
 except Exception:
     result['status'] = 'error'
+    result['completed_at'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
+    result['completed_at_unix'] = time.time()
     result['error'] = traceback.format_exc()
     emit_progress(None,'任务失败',utext(result['error']).splitlines()[-1][:180])
+# Attach the Mesh system chosen by the AutoMesh UI to this job's immutable receipt.
+# This is metadata only; the worker never switches or launches a Mesh system.
+_mesh_system_name = utext(job.get('mesh_system', '')).strip()
+result['mesh_system'] = _mesh_system_name
+if isinstance(result.get('summary'), dict):
+    result['summary']['mesh_system'] = _mesh_system_name
+
 # Persist the job-specific terminal receipt first. A user may have an old
 # quality_check in last_result.json; the UI must not confuse it with this job.
 # Independent writes: losing one output must not discard the other. The Go

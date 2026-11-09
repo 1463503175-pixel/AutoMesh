@@ -41,7 +41,7 @@ func TestEveryGUITaskCanBeSubmitted(t *testing.T) {
 		t.Run(phase, func(t *testing.T) {
 			w := Workspace{Dir: t.TempDir()}
 			snap := &Snapshot{Project: "E:/ALD/current", Fingerprint: "current-geometry", Mesh: map[string]any{"Elements": 9660873}}
-			plan := &Plan{GlobalMM: 12, ExpectedProject: snap.Project, Fingerprint: snap.Fingerprint, SkewMin: 0.90, SkewMax: 1.00}
+			plan := &Plan{GlobalMM: 12, ExpectedProject: snap.Project, Fingerprint: snap.Fingerprint, SkewMin: 0.90, SkewMax: 1.00, QualityMin: 0.00, QualityMax: 0.10}
 			var s *Snapshot = snap
 			if phase == "inspect" || phase == "auto_onepass" {
 				s = nil
@@ -54,8 +54,14 @@ func TestEveryGUITaskCanBeSubmitted(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GUI phase %q rejected: %v", phase, err)
 			}
-			if task.Phase != phase {
-				t.Fatalf("wrong phase %s", task.Phase)
+			// Native deep distribution is an opt-in flag on the existing
+			// read-only quality protocol, not a separate ACT phase.
+			expectedPhase := phase
+			if phase == "quality_check_deep" {
+				expectedPhase = "quality_check"
+			}
+			if task.Phase != expectedPhase || task.DeepNativeSkewness != (phase == "quality_check_deep") {
+				t.Fatalf("phase/opt-in flag mismatch: phase=%q deep=%v", task.Phase, task.DeepNativeSkewness)
 			}
 			if phase == "warning_refine_preview" || phase == "warning_refine_publish" {
 				if task.ExpectedProject != snap.Project || task.Fingerprint != snap.Fingerprint {

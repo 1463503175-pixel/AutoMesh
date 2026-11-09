@@ -23,6 +23,7 @@ type WarningSelection struct {
 	CandidateIDs                 []string `json:"candidate_ids"`
 	ManuallyReviewedCandidateIDs []string `json:"manually_reviewed_candidate_ids"`
 	SelectedBudget               int      `json:"selected_budget_proxy"`
+	BudgetWarningAcknowledged    bool     `json:"budget_warning_acknowledged,omitempty"`
 	CreatedAt                    string   `json:"created_at"`
 }
 
@@ -369,6 +370,12 @@ func (w Workspace) warningOwnedCandidates(snapshot *Snapshot) (map[string]bool, 
 
 // validateWarningSelection runs before any task submission or ACT changes.
 func validateWarningSelection(p WarningPlan, ids []string, published map[string]bool, existingBudget int) (WarningSelection, error) {
+	return validateWarningSelectionWithBudgetAck(p, ids, published, existingBudget, false)
+}
+
+// The budget proxy is only an advisory threshold. Crossing it requires a
+// deliberate operator acknowledgement, recorded in the task-bound receipt.
+func validateWarningSelectionWithBudgetAck(p WarningPlan, ids []string, published map[string]bool, existingBudget int, budgetWarningAck bool) (WarningSelection, error) {
 	s := WarningSelection{}
 	if p.Status != "ready" || len(p.Clusters) == 0 || p.PlanID == "" {
 		return s, errors.New("没有有效的候选方案")
@@ -411,17 +418,21 @@ func validateWarningSelection(p WarningPlan, ids []string, published map[string]
 	if _, err := reviewedSphereOverlap(p, ids, published); err != nil {
 		return s, err
 	}
-	if budget > 120000 {
-		return s, fmt.Errorf("累计预算 %d > 120000；请减少本次勾选，未选候选会保留", budget)
+	if budget > reviewBudgetLimit && !budgetWarningAck {
+		return s, fmt.Errorf("累计预算代理 %d 超过预警值 %d，需要独立人工确认", budget, reviewBudgetLimit)
 	}
 	return WarningSelection{SchemaVersion: 1, PlanID: p.PlanID, Project: p.Project,
 		Fingerprint: p.Fingerprint, MeshElements: p.MeshElements,
 		CandidateIDs:                 append([]string(nil), ids...),
 		ManuallyReviewedCandidateIDs: append([]string(nil), ids...),
-		SelectedBudget:               budget, CreatedAt: time.Now().Format(time.RFC3339)}, nil
+		SelectedBudget:               budget, BudgetWarningAcknowledged: budget > reviewBudgetLimit && budgetWarningAck, CreatedAt: time.Now().Format(time.RFC3339)}, nil
 }
 
 func (w Workspace) saveWarningSelection(snapshot *Snapshot, p WarningPlan, ids []string) (WarningSelection, error) {
+	return w.saveWarningSelectionWithBudgetAck(snapshot, p, ids, false)
+}
+
+func (w Workspace) saveWarningSelectionWithBudgetAck(snapshot *Snapshot, p WarningPlan, ids []string, budgetWarningAck bool) (WarningSelection, error) {
 	if snapshot == nil || p.Project != snapshot.Project || p.Fingerprint != snapshot.Fingerprint {
 		return WarningSelection{}, errors.New("候选方案与当前工程不符")
 	}
@@ -429,7 +440,7 @@ func (w Workspace) saveWarningSelection(snapshot *Snapshot, p WarningPlan, ids [
 	if err != nil {
 		return WarningSelection{}, err
 	}
-	selection, err := validateWarningSelection(p, ids, owned, budget)
+	selection, err := validateWarningSelectionWithBudgetAck(p, ids, owned, budget, budgetWarningAck)
 	if err != nil {
 		return WarningSelection{}, err
 	}
@@ -446,6 +457,9 @@ func (w Workspace) readWarningSelection(p WarningPlan) (WarningSelection, error)
 	}
 	if s.SchemaVersion != 1 || s.PlanID != p.PlanID || s.Project != p.Project || s.Fingerprint != p.Fingerprint || s.MeshElements != p.MeshElements || len(s.CandidateIDs) == 0 {
 		return s, errors.New("候选勾选与当前已审核方案不一致，禁止发布")
+	}
+	if s.SelectedBudget > reviewBudgetLimit && !s.BudgetWarningAcknowledged {
+		return s, errors.New("超建议预算的发布记录缺少人工风险确认")
 	}
 	if len(s.CandidateIDs) != len(s.ManuallyReviewedCandidateIDs) {
 		return s, errors.New("部分候选尚未确认安全风险")

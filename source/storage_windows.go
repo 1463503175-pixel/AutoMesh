@@ -126,5 +126,5 @@ func (a *state) finishStorage() {
 	a.qualityStale = true
 	a.message(fmt.Sprintf("已迁移校验 %d 个文件，工作路径：%s；请重新连接并扫描", n, target))
 	alert(fmt.Sprintf("数据迁移成功（校验 %d 个文件）。\n新路径：%s\n旧路径保留。\n请重新连接现有 Workbench 并扫描。", n, target))
-	a.switchPage(4)
+	a.switchPage(5)
 }

@@ -4,10 +4,14 @@ package main
 // identifiers unchanged for task dispatch, logging, and persisted state.
 func taskDisplayName(phase string) string {
 	switch phase {
+	case "sync_status":
+		return "同步工程信息"
 	case "inspect":
-		return "读取现有网格及命名"
+		return "完整几何扫描"
 	case "quality_check":
 		return "检查网格质量"
+	case "mark_low_element_quality":
+		return "标记低 Element Quality 单元"
 	case "mark_high_skew":
 		return "标记偏度区间单元"
 	case "mark_warning":

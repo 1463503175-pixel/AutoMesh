@@ -9,7 +9,7 @@ WORKER=(BASE/'assets'/'meshing_worker.py').read_text()
 
 class WarningQuickPathTests(unittest.TestCase):
     def test_verified_snapshot_used_for_warning_actions(self):
-        self.assertIn("'mark_warning','mark_high_skew','warning_refine_preview','warning_refine_publish'",WORKER)
+        self.assertIn("'mark_warning','mark_high_skew','mark_low_element_quality','warning_refine_preview','warning_refine_publish'",WORKER)
         self.assertIn('state=read_only_verified_snapshot(job)',WORKER)
 
     def test_preview_publish_after_mark_use_current_same_mesh(self):

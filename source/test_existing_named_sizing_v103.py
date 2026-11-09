@@ -43,11 +43,10 @@ class ExistingNamedSizingTests(unittest.TestCase):
             self.assertEqual(result2['summary']['updated_sizing_count'],1)
             self.assertEqual(sizing.ElementSize,'1.5 [mm]')
 
-    def test_exclude_inlet_and_reject_overlap_and_missing_names(self):
+    def test_inlet_is_allowed_and_reject_overlap_and_missing_names(self):
         with tempfile.TemporaryDirectory() as d:
             m,f=self.setup_scene();snap=self.inspect(f,d)
             for n,plan,fragment in [
-                (2,{'inlet':2},'inlet/outlet'),
                 (3,{'AM_Hole_01':1,'missing':2},'命名组校验未通过'),
                 (4,{'AM_Hole_01':0.1},'0.35-500'),
             ]:

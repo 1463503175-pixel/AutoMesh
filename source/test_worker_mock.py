@@ -80,8 +80,15 @@ class WorkerTests(unittest.TestCase):
     def test_auto_once_and_unit_gap(self):
         with tempfile.TemporaryDirectory() as d:
             model=ModelType()
-            pre={'job_id':'c'*32,'phase':'inspect'}
-            self.run_job(d,pre,model)
+            pre={'job_id':'c'*32,'logical_job_id':'d'*32,'attempt_id':'e'*32,
+                 'attempt_number':1,'phase':'inspect'}
+            pre_result=self.run_job(d,pre,model)
+            self.assertEqual(pre_result['logical_job_id'],pre['logical_job_id'])
+            self.assertEqual(pre_result['attempt_id'],pre['attempt_id'])
+            self.assertEqual(pre_result['attempt_number'],1)
+            progress=json.loads((pathlib.Path(d)/('job_progress_'+'c'*32+'.json')).read_text('utf8'))
+            self.assertEqual(progress['logical_job_id'],pre['logical_job_id'])
+            self.assertEqual(progress['attempt_id'],pre['attempt_id'])
             snap=json.loads((pathlib.Path(d)/'snapshot.json').read_text('utf8'))
             j={'job_id':'a'*32,'phase':'auto','base_mm':12,'apply_global':True,
                'expected_project':snap['project'],'geometry_fingerprint':snap['fingerprint']}
@@ -94,6 +101,91 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(r['summary']['geometry_evidence']['explicit_boundaries']['inlet_faces'],1)
             self.run_job(d,j,model,True)
             self.assertEqual(model.Mesh.count,1)
+
+    def test_lightweight_sync_does_not_write_or_replace_geometry_snapshot(self):
+        with tempfile.TemporaryDirectory() as d:
+            model=ModelType()
+            snapshot=pathlib.Path(d)/'snapshot.json'
+            sentinel='{"keep":"previous geometry snapshot"}'
+            snapshot.write_text(sentinel,encoding='utf8')
+            result=self.run_job(d,{'job_id':'8'*32,'phase':'sync_status'},model)
+            self.assertEqual(result['status'],'ok',result.get('error'))
+            self.assertEqual(result['summary']['read_mode'],'lightweight_metadata_only')
+            self.assertFalse(result['summary']['geometry_identity_verified'])
+            self.assertEqual(result['summary']['body_count'],1)
+            self.assertEqual(result['summary']['named_count'],2)
+            self.assertEqual(result['summary']['control_count'],0)
+            self.assertTrue(result['summary']['geometry_quick_signature'])
+            self.assertEqual(snapshot.read_text('utf8'),sentinel)
+            self.assertEqual(model.Mesh.count,0)
+
+    def test_quality_check_without_snapshot_is_readonly_and_does_not_force_full_scan(self):
+        with tempfile.TemporaryDirectory() as d:
+            model=ModelType();model.Mesh.Elements=1200;model.Mesh.Nodes=1600
+            result=self.run_job(d,{'job_id':'9'*32,'phase':'quality_check'},model)
+            self.assertEqual(result['status'],'ok',result.get('error'))
+            self.assertEqual(result['summary']['mesh_elements'],1200)
+            self.assertFalse(result['summary']['geometry_identity_verified'])
+            self.assertTrue(result['summary']['mesh_signature'])
+            self.assertIn('quality',result['summary'])
+            self.assertFalse((pathlib.Path(d)/'snapshot.json').exists())
+            self.assertEqual(model.Mesh.count,0)
+    def test_identical_mesh_signature_in_sync_and_full_snapshot(self):
+        with tempfile.TemporaryDirectory() as d:
+            m=ModelType();m.Mesh.Elements=1200;m.Mesh.Nodes=1600
+            first=self.run_job(d,{'job_id':'a'*32,'phase':'inspect'},m)
+            self.assertEqual(first['status'],'ok')
+            full=json.loads((pathlib.Path(d)/'snapshot.json').read_text('utf8'))
+            quick=self.run_job(d,{'job_id':'b'*32,'phase':'sync_status'},m)
+            self.assertEqual(quick['status'],'ok')
+            self.assertEqual(quick['summary']['mesh_signature'],full['mesh_signature'])
+
+    def test_no_identity_quality_ignores_unrelated_saved_snapshot(self):
+        with tempfile.TemporaryDirectory() as d:
+            m=ModelType();m.Mesh.Elements=1200;m.Mesh.Nodes=1600
+            fp=pathlib.Path(d)/'snapshot.json'
+            fp.write_text('\x7b"unrelated":"outdated snapshot"\x7d',encoding='utf8')
+            quality=self.run_job(d,{'job_id':'c'*32,'phase':'quality_check'},m)
+            self.assertEqual(quality['status'],'ok', quality.get('error'))
+            self.assertFalse(quality['summary']['geometry_identity_verified'])
+            self.assertEqual(quality['summary']['mesh_elements'],1200)
+            self.assertIn('unrelated',fp.read_text('utf8'))
+
+    def test_no_mesh_status_is_not_measured_not_old_quality(self):
+        with tempfile.TemporaryDirectory() as d:
+            m=ModelType()
+            for phase in ('quality_check','diagnose'):
+                job={'job_id':('e' if phase=='quality_check' else 'f')*32,'phase':phase}
+                result=self.run_job(d,job,m)
+                self.assertEqual(result['status'],'ok',result.get('error'))
+                self.assertEqual(result['summary']['quality_gate'],'no_mesh')
+                self.assertEqual(result['summary']['quality_status'],'not_measured')
+                self.assertNotIn('quality',result['summary'])
+
+    def test_explicit_export_uses_saved_verified_snapshot_without_full_rescan(self):
+        with tempfile.TemporaryDirectory() as d:
+            m=ModelType();m.Mesh.Elements=1200;m.Mesh.Nodes=1600
+            self.assertEqual(self.run_job(d,{'job_id':'a'*32,'phase':'inspect'},m)['status'],'ok')
+            previous=(pathlib.Path(d)/'snapshot.json').read_bytes()
+            snap=json.loads(previous)
+            output=str(pathlib.Path(d)/'read_only_export.msh')
+            # Full snapshot calls ParamAtPoint; export must only run the quick
+            # live identity check against the existing verified snapshot.
+            face=Body.Faces[0]
+            method=face.ParamAtPoint
+            def reject_full_scan(_): raise AssertionError('Unexpected full geometry scan')
+            face.ParamAtPoint=reject_full_scan
+            try:
+                result=self.run_job(d,{'job_id':'b'*32,'phase':'export',
+                    'expected_project':snap['project'],'geometry_fingerprint':snap['fingerprint'],
+                    'export_path':output,'quality_review_acknowledged':True},m)
+            finally:
+                face.ParamAtPoint=method
+            self.assertEqual(result['status'],'ok',result.get('error'))
+            self.assertTrue(pathlib.Path(output).is_file())
+            self.assertEqual(previous,(pathlib.Path(d)/'snapshot.json').read_bytes())
+            self.assertEqual(m.Mesh.count,0)
+
     def test_auto_onepass_single_dispatch(self):
         with tempfile.TemporaryDirectory() as d:
             model=ModelType()

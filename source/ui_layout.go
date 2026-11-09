@@ -31,6 +31,19 @@ func fineColumns(width int) (listW, rightX, rightW int) {
 	return
 }
 
+// Win32 COMBOBOX MoveWindow height must reserve space for its dropdown list.
+// Do not change plannedControls: its H represents only the collapsed field,
+// while the native HWND needs enough height for all choices to be visible.
+func nativeComboWindowHeight(name string, collapsedHeight int) int {
+	switch name {
+	case "markrule", "analysisbase", "analysistarget", "systems":
+		if collapsedHeight < 190 {
+			return 190
+		}
+	}
+	return collapsedHeight
+}
+
 type uiBox struct{ X, Y, W, H int }
 
 func (a uiBox) intersects(b uiBox) bool {
@@ -46,12 +59,11 @@ func plannedControls(width int) map[string]uiBox {
 	cw := uiWidth(width)
 	x := contentX
 	gap := 12
-	col := (cw - 2*gap) / 3
-	x3 := x + 2*(col+gap)
 	left := cw * 63 / 100
 	listW, rightX, rightW := fineColumns(width)
 	return map[string]uiBox{
-		"navhome": {16, 104, 168, 43}, "navconn": {16, 151, 168, 43}, "navfine": {16, 198, 168, 43}, "navreport": {16, 245, 168, 43}, "navsettings": {16, 292, 168, 43},
+		"navhome": {16, 104, 168, 43}, "navconn": {16, 151, 168, 43}, "navfine": {16, 198, 168, 43}, "navreport": {16, 245, 168, 43}, "navanalysis": {16, 292, 168, 43}, "navsettings": {16, 339, 168, 43},
+		"syncstatus": {width - 420, 14, 84, 34}, "qualityupdate": {width - 328, 14, 92, 34}, "taskcenter": {width - 228, 14, 92, 34},
 		"auto": {x + 28, 181, 307, 43},
 		// New direct-to-existing-NS workflow: visible, scrollable named list.
 		"finegap": {x + 30, 237, 224, 28}, "finegapmm": {x + 276, 237, 123, 30},
@@ -61,7 +73,7 @@ func plannedControls(width int) map[string]uiBox {
 		"finegroups":      {x + 30, 307, listW, 238},
 		"finefilter":      {x + 30, 270, 120, 29},
 		"finerefresh":     {x + 160, 270, 105, 29},
-		"finechinese":     {x + 275, 270, 130, 29},
+		"finechinese":     {x + cw/2 + 10, 525, 210, 35},
 		"finegroupactive": {rightX, 387, rightW, 28},
 		"finegroupmm":     {rightX, 461, 126, 30},
 		"finegroupsave":   {rightX, 505, 160, 32},
@@ -73,28 +85,42 @@ func plannedControls(width int) map[string]uiBox {
 		"finenames":        {x + 214, 649, 170, 32},
 		"fineprepare":      {x + 396, 649, 205, 32},
 		"finegenerate":     {x + 613, 649, 217, 32},
-		"size":             {x3 + 20, 326, col - 40, 34}, "global": {x3 + 20, 365, col - 40, 28},
+		"size":             {x + 140, 160, 95, 32}, "global": {x + 255, 160, 340, 32},
 		"scan": {x + 22, homeButtonsY, 132, 36}, "report": {x + 166, homeButtonsY, 132, 36}, "open": {x + 310, homeButtonsY, 165, 36},
 		"link": {x + 30, 307, 230, 38}, "port": {x + 284, 307, 122, 38},
 		"initretry": {x + 423, 307, 185, 38}, "taskstatusconn": {x + 620, 307, 195, 38},
 		"systems": {x + 30, 443, 420, 190}, "ack": {x + 30, 501, 540, 32},
 		// Report page follows the real sequence: inspect -> mark interval -> preview -> view -> publish.
-		"qualitycheck": {x + 30, 483, 170, 34}, "skewlow": {x + 296, 485, 70, 30}, "skewhigh": {x + 395, 485, 70, 30},
-		"markhighskew": {x + 486, 483, 188, 34}, "markwarning": {x + 686, 483, 144, 34},
+		"qualitycheck": {width - 328, 14, 92, 34}, "markrule": {x + 30, 483, 220, 34}, "markexecute": {x + 265, 483, 160, 34},
+		"skewlow": {x + 440, 485, 70, 30}, "skewhigh": {x + 530, 485, 70, 30},
 		"warningplan": {x + 30, 568, 205, 34}, "warningview": {x + 245, 568, 160, 34},
 		"warningpublish": {x + 415, 568, 190, 34}, "taskstatus": {x + 615, 568, 198, 34},
-		"htmlreport": {x + 30, 633, 175, 34}, "diagnose": {x + 215, 633, 165, 34}, "mark": {x + 390, 633, 150, 34},
-		"reviewlist":      {x + 30, 268, cw - 60, 325},
-		"reviewback":      {x + 30, 651, 170, 34},
-		"reviewclear":     {x + 212, 651, 140, 34},
-		"reviewdetails":   {x + 364, 651, 180, 34},
-		"reviewconfirm":   {x + cw - 258, 651, 228, 34},
-		"export":          {x + 30, settingsExportY, cw - 60, 38},
-		"exportbutton":    {x + 30, 369, 282, 36},
-		"clearlease":      {x + 30, 596, 265, 35},
-		"tasklog":         {x + 310, 596, 190, 35},
-		"storagechange":   {x + 30, 525, 230, 35},
-		"_home_left_card": {x, homeLowerY, left, 192}, "_home_right_card": {x + left + gap, homeLowerY, cw - left - gap, 192},
+		"htmlreport": {x + 30, 660, 175, 34}, "diagnose": {x + 215, 660, 165, 34}, "mark": {x + 390, 633, 150, 34},
+		"analysisoverview": {x + 30, 150, 150, 32}, "analysiscompare": {x + 190, 150, 150, 32},
+		"analysisdistribution": {x + 350, 150, 150, 32}, "analysisregion": {x + 510, 150, 150, 32},
+		"analysisbase": {x + 30, 205, 200, 34}, "analysistarget": {x + 240, 205, 200, 34},
+		"analysisrefresh": {x + 450, 205, 90, 34}, "analysisexport": {x + 550, 205, 90, 34},
+		"analysisdeep":        {x + 650, 205, 180, 34},
+		"analysisreport":      {x + 680, 150, 150, 32},
+		"analysisbodylist":    {x + 48, 680, cw - 96, 210},
+		"actionhelp":          {width - 536, 14, 105, 34},
+		"reviewselectall":     {x + 30, 268, 130, 32},
+		"reviewselectsevere":  {x + 170, 268, 140, 32},
+		"reviewselectwarning": {x + 320, 268, 140, 32},
+		"reviewselectother":   {x + 470, 268, 155, 32},
+		"reviewclear":         {x + 635, 268, 110, 32},
+		"reviewlist":          {x + 30, 309, cw - 60, 284},
+		"reviewrisk":          {x + 30, 626, cw - 60, 22},
+		"reviewback":          {x + 30, 651, 170, 34},
+		"reviewdetails":       {x + 212, 651, 180, 34},
+		"reviewreason":        {x + 404, 651, 170, 34},
+		"reviewconfirm":       {x + cw - 258, 651, 228, 34},
+		"export":              {x + 30, settingsExportY, cw - 60, 38},
+		"exportbutton":        {x + 30, 369, 282, 36},
+		"clearlease":          {x + 30, 596, 265, 35},
+		"tasklog":             {x + 310, 596, 190, 35},
+		"storagechange":       {x + 30, 525, 230, 35},
+		"_home_left_card":     {x, homeLowerY, left, 192}, "_home_right_card": {x + left + gap, homeLowerY, cw - left - gap, 192},
 	}
 }
 
@@ -107,15 +133,11 @@ type pageLabel struct {
 func criticalLabels(width int) []pageLabel {
 	cw := uiWidth(width)
 	x := contentX
-	gap := 12
-	col := (cw - 2*gap) / 3
-	x3 := x + 2*(col+gap)
 	left := cw * 63 / 100
 	listW, rightX, rightW := fineColumns(width)
 	return []pageLabel{
 		{"主页说明", 0, uiBox{x + 360, 178, cw - 385, 37}},
-		{"尺寸标题", 0, uiBox{x3 + 20, 299, col - 40, 24}},
-		{"尺寸后说明", 0, uiBox{x3 + 20, 398, col - 40, 22}},
+		{"参考尺寸标题", 2, uiBox{x + 30, 160, 100, 24}},
 		{"运行状态", 0, uiBox{x + 20, homeLowerY + 54, left - 45, 27}},
 		{"运行详情", 0, uiBox{x + 20, homeLowerY + 86, left - 45, 24}},
 		{"局部页面标题", 2, uiBox{x + 16, 83, cw - 32, 43}},
@@ -136,12 +158,12 @@ func criticalLabels(width int) []pageLabel {
 		{"编辑器提示", 1, uiBox{x + 30, 544, cw - 60, 26}},
 		{"连接状态", 1, uiBox{x + 30, 596, cw - 60, 27}},
 		{"质量筛选步骤标题", 3, uiBox{x + 30, 449, cw - 60, 24}},
-		{"偏度范围标题", 3, uiBox{x + 211, 485, 82, 30}},
-		{"偏度区间连接", 3, uiBox{x + 371, 485, 20, 30}},
+		{"偏度范围标题", 3, uiBox{x + 440, 461, 78, 18}},
+		{"偏度区间连接", 3, uiBox{x + 515, 485, 15, 30}},
 		{"方案步骤标题", 3, uiBox{x + 30, 535, cw - 60, 25}},
 		{"辅助工具步骤标题", 3, uiBox{x + 30, 608, cw - 60, 22}},
-		{"导出填写提示", 4, uiBox{x + 30, 257, cw - 60, 27}},
-		{"导出后说明", 4, uiBox{x + 350, 369, cw - 380, 36}},
+		{"导出填写提示", 5, uiBox{x + 30, 257, cw - 60, 27}},
+		{"导出后说明", 5, uiBox{x + 350, 369, cw - 380, 36}},
 	}
 }
 
@@ -162,4 +184,51 @@ func preservedNamedSizes(previous map[string]float64, previousIdentity, currentI
 		}
 	}
 	return current
+}
+
+// Deprecated controls are retained in the source for backward-compatible
+// command IDs, but the new workflow exposes one global quality action and one
+// rule-driven marker. These legacy HWNDs must never be visible.
+func deprecatedDuplicateControls() []string {
+	return []string{
+		// Old Home/report actions replaced by the global quality action and
+		// the rule-driven marker selector.
+		"scan", "qualitycheck", "mark", "markwarning", "markhighskew",
+		// Superseded task-status entry points; the global task drawer owns status.
+		"taskstatus", "taskstatusconn",
+		// Old separate bulk editor is superseded by the selection-aware Apply Size action.
+		"finebulkmm", "finebulkapply",
+		// Deprecated category controls are retained only for compatibility.
+		"finegap", "finegapmm", "finehole", "fineholemm", "fineport", "fineportmm", "finecurve", "finecurvemm",
+		// Old Settings task-log button is replaced by the task-drawer log action.
+		"tasklog",
+	}
+}
+
+// pageControlPage is the single source of truth for every page-owned control.
+// Page 6 is the candidate-review subpage nested inside Quality Diagnosis, not
+// a seventh primary navigation destination. Global toolbar/drawer controls are
+// intentionally absent from this map.
+func pageControlPage(name string) (int, bool) {
+	switch name {
+	case "auto", "scan", "report", "open":
+		return 0, true
+	case "port", "link", "initretry", "taskstatusconn", "systems", "ack":
+		return 1, true
+	case "size", "global", "finegap", "finegapmm", "finehole", "fineholemm", "fineport", "fineportmm", "finecurve", "finecurvemm",
+		"finenames", "fineprepare", "finegenerate", "fineglobalreview", "finegroups", "finefilter", "finerefresh",
+		"finegroupactive", "finegroupmm", "finegroupsave", "finesuggest", "finebulkmm", "finebulkapply":
+		return 2, true
+	case "markrule", "markexecute", "skewlow", "skewhigh", "warningplan", "warningview", "warningpublish", "htmlreport", "diagnose", "mark", "markwarning", "markhighskew", "taskstatus":
+		return 3, true
+	case "analysisbase", "analysistarget", "analysisrefresh", "analysisexport", "analysisdeep", "analysisreport", "analysisbodylist", "analysisoverview", "analysiscompare", "analysisdistribution", "analysisregion":
+		return 4, true
+	case "export", "exportbutton", "clearlease", "storagechange", "tasklog", "finechinese":
+		return 5, true
+	case "reviewlist", "reviewrisk", "reviewback", "reviewclear", "reviewdetails", "reviewreason", "reviewconfirm",
+		"reviewselectall", "reviewselectsevere", "reviewselectwarning", "reviewselectother":
+		return 6, true
+	default:
+		return 0, false
+	}
 }

@@ -23,117 +23,146 @@ import (
 )
 
 const (
-	WS_VISIBLE             = 0x10000000
-	WS_CHILD               = 0x40000000
-	WS_BORDER              = 0x00800000
-	WS_TABSTOP             = 0x00010000
-	WS_OVERLAPPEDWINDOW    = 0x00CF0000
-	WS_VSCROLL             = 0x00200000
-	WS_HSCROLL             = 0x00100000
-	ES_AUTOHSCROLL         = 0x0080
-	ES_MULTILINE           = 0x0004
-	ES_AUTOVSCROLL         = 0x0040
-	ES_READONLY            = 0x0800
-	BS_AUTOCHECKBOX        = 0x0003
-	BS_OWNERDRAW           = 0x000B
-	CBS_DROPDOWNLIST       = 0x0003
-	WM_DESTROY             = 0x0002
-	WM_GETMINMAXINFO       = 0x0024
-	WM_SIZE                = 0x0005
-	WM_MOUSEWHEEL          = 0x020A
-	WM_VSCROLL             = 0x0115
-	WM_KEYDOWN             = 0x0100
-	VK_TAB                 = 0x0009
-	EN_CHANGE              = 0x0300
-	WM_HSCROLL             = 0x0114
-	SB_HORZ                = 0
-	SB_VERT                = 1
-	SB_LINEUP              = 0
-	SB_LINEDOWN            = 1
-	SB_PAGEUP              = 2
-	SB_PAGEDOWN            = 3
-	SB_THUMBPOSITION       = 4
-	SB_THUMBTRACK          = 5
-	SB_TOP                 = 6
-	SB_BOTTOM              = 7
-	SIF_ALL                = 0x17
-	WM_ENTERSIZEMOVE       = 0x0231
-	WM_EXITSIZEMOVE        = 0x0232
-	WM_PAINT               = 0x000F
-	WM_ERASEBKGND          = 0x0014
-	WM_COMMAND             = 0x0111
-	WM_DRAWITEM            = 0x002B
-	WM_CTLCOLORSTATIC      = 0x0138
-	WM_CTLCOLOREDIT        = 0x0133
-	WM_CTLCOLORBTN         = 0x0135
-	WM_SETFONT             = 0x0030
-	WM_APPSTATUS           = 0x8001
-	WM_APPDONE             = 0x8002
-	WM_APPINIT             = 0x8003
-	WM_APPSTORAGE          = 0x8004
-	BM_GETCHECK            = 0x00F0
-	BM_SETCHECK            = 0x00F1
-	CB_ADDSTRING           = 0x0143
-	CB_SETCURSEL           = 0x014E
-	CB_GETCURSEL           = 0x0147
-	CB_RESETCONTENT        = 0x014B
-	LB_ADDSTRING           = 0x0180
-	LB_RESETCONTENT        = 0x0184
-	LB_GETCURSEL           = 0x0188
-	LB_SETCURSEL           = 0x0186
-	LBS_NOTIFY             = 0x0001
-	LBS_NOINTEGRALHEIGHT   = 0x0100
-	MB_YESNO               = 4
-	MB_ICONWARNING         = 0x30
-	MB_ICONERROR           = 0x10
-	MB_ICONINFORMATION     = 0x40
-	ODS_SELECTED           = 0x0001
-	BN_CLICKED             = 0x0000
-	CBN_SELCHANGE          = 0x0001
-	ODS_DISABLED           = 0x0004
-	ODS_FOCUS              = 0x0010
-	DT_CENTER              = 0x1
-	DT_VCENTER             = 0x4
-	DT_SINGLELINE          = 0x20
-	DT_END_ELLIPSIS        = 0x8000
-	ID_NAV_HOME            = 100
-	ID_NAV_CONNECT         = 101
-	ID_NAV_FINE            = 102
-	ID_NAV_REPORT          = 103
-	ID_NAV_SETTINGS        = 104
-	ID_AUTO                = 110
-	ID_SCAN                = 111
-	ID_CONNECT             = 112
-	ID_REPORT              = 113
-	ID_OPEN                = 114
-	ID_COPY                = 115
-	ID_HTML_REPORT         = 116
-	ID_DIAGNOSE            = 117
-	ID_MARK                = 118
-	ID_FINE_GENERATE       = 119
-	ID_RECOVER             = 120
-	ID_CLEAR_LEASE         = 121
-	ID_FINE_PREPARE        = 122
-	ID_EXPORT_MSH          = 123
-	ID_FINE_GROUP_SELECT   = 124
-	ID_FINE_GROUP_SAVE     = 125
-	ID_FINE_NAMES          = 126
-	ID_FINE_FILTER         = 127
-	ID_FINE_REFRESH        = 128
-	ID_QUALITY_CHECK       = 129
-	ID_CHINESE_NAMES       = 130
-	ID_FINE_AUTO_RECOMMEND = 131
-	ID_FINE_BULK_SET       = 132
-	ID_MARK_WARNING        = 133
-	ID_STORAGE_CHANGE      = 134
-	ID_WARNING_PLAN        = 135
-	ID_WARNING_PUBLISH     = 136
-	ID_WARNING_VIEW        = 137
-	ID_FINE_GLOBAL_REVIEW  = 138
-	ID_TASK_STATUS         = 139
-	ID_INIT_RETRY          = 140
-	ID_TASK_STOP           = 141
-	ID_MARK_HIGH_SKEW      = 142
+	WS_VISIBLE                   = 0x10000000
+	WS_CHILD                     = 0x40000000
+	WS_BORDER                    = 0x00800000
+	WS_TABSTOP                   = 0x00010000
+	WS_OVERLAPPEDWINDOW          = 0x00CF0000
+	WS_VSCROLL                   = 0x00200000
+	WS_HSCROLL                   = 0x00100000
+	ES_AUTOHSCROLL               = 0x0080
+	ES_MULTILINE                 = 0x0004
+	ES_AUTOVSCROLL               = 0x0040
+	ES_READONLY                  = 0x0800
+	BS_AUTOCHECKBOX              = 0x0003
+	BS_OWNERDRAW                 = 0x000B
+	CBS_DROPDOWNLIST             = 0x0003
+	WM_DESTROY                   = 0x0002
+	WM_GETMINMAXINFO             = 0x0024
+	WM_SIZE                      = 0x0005
+	WM_MOUSEWHEEL                = 0x020A
+	WM_VSCROLL                   = 0x0115
+	WM_KEYDOWN                   = 0x0100
+	VK_TAB                       = 0x0009
+	EN_CHANGE                    = 0x0300
+	WM_HSCROLL                   = 0x0114
+	SB_HORZ                      = 0
+	SB_VERT                      = 1
+	SB_LINEUP                    = 0
+	SB_LINEDOWN                  = 1
+	SB_PAGEUP                    = 2
+	SB_PAGEDOWN                  = 3
+	SB_THUMBPOSITION             = 4
+	SB_THUMBTRACK                = 5
+	SB_TOP                       = 6
+	SB_BOTTOM                    = 7
+	SIF_ALL                      = 0x17
+	WM_ENTERSIZEMOVE             = 0x0231
+	WM_EXITSIZEMOVE              = 0x0232
+	WM_PAINT                     = 0x000F
+	WM_ERASEBKGND                = 0x0014
+	WM_COMMAND                   = 0x0111
+	WM_DRAWITEM                  = 0x002B
+	WM_CTLCOLORSTATIC            = 0x0138
+	WM_CTLCOLOREDIT              = 0x0133
+	WM_CTLCOLORBTN               = 0x0135
+	WM_SETFONT                   = 0x0030
+	WM_APPSTATUS                 = 0x8001
+	WM_APPDONE                   = 0x8002
+	WM_APPINIT                   = 0x8003
+	WM_APPSTORAGE                = 0x8004
+	BM_GETCHECK                  = 0x00F0
+	BM_SETCHECK                  = 0x00F1
+	CB_ADDSTRING                 = 0x0143
+	CB_SETCURSEL                 = 0x014E
+	CB_GETCURSEL                 = 0x0147
+	CB_RESETCONTENT              = 0x014B
+	LB_ADDSTRING                 = 0x0180
+	LB_RESETCONTENT              = 0x0184
+	LB_GETCURSEL                 = 0x0188
+	LB_SETCURSEL                 = 0x0186
+	LBS_NOTIFY                   = 0x0001
+	LBS_NOINTEGRALHEIGHT         = 0x0100
+	MB_YESNO                     = 4
+	MB_ICONWARNING               = 0x30
+	MB_ICONERROR                 = 0x10
+	MB_ICONINFORMATION           = 0x40
+	ODS_SELECTED                 = 0x0001
+	BN_CLICKED                   = 0x0000
+	CBN_SELCHANGE                = 0x0001
+	ODS_DISABLED                 = 0x0004
+	ODS_FOCUS                    = 0x0010
+	DT_CENTER                    = 0x1
+	DT_VCENTER                   = 0x4
+	DT_SINGLELINE                = 0x20
+	DT_END_ELLIPSIS              = 0x8000
+	ID_NAV_HOME                  = 100
+	ID_NAV_CONNECT               = 101
+	ID_NAV_FINE                  = 102
+	ID_NAV_REPORT                = 103
+	ID_NAV_ANALYSIS              = 104
+	ID_NAV_SETTINGS              = 105
+	ID_AUTO                      = 110
+	ID_SCAN                      = 111
+	ID_CONNECT                   = 112
+	ID_REPORT                    = 113
+	ID_OPEN                      = 114
+	ID_COPY                      = 115
+	ID_HTML_REPORT               = 116
+	ID_DIAGNOSE                  = 117
+	ID_MARK                      = 118
+	ID_FINE_GENERATE             = 119
+	ID_RECOVER                   = 120
+	ID_CLEAR_LEASE               = 121
+	ID_FINE_PREPARE              = 122
+	ID_EXPORT_MSH                = 123
+	ID_FINE_GROUP_SELECT         = 124
+	ID_FINE_GROUP_SAVE           = 125
+	ID_FINE_NAMES                = 126
+	ID_FINE_FILTER               = 127
+	ID_FINE_REFRESH              = 128
+	ID_QUALITY_CHECK             = 129
+	ID_CHINESE_NAMES             = 130
+	ID_FINE_AUTO_RECOMMEND       = 131
+	ID_FINE_BULK_SET             = 132
+	ID_MARK_WARNING              = 133
+	ID_STORAGE_CHANGE            = 134
+	ID_WARNING_PLAN              = 135
+	ID_WARNING_PUBLISH           = 136
+	ID_WARNING_VIEW              = 137
+	ID_FINE_GLOBAL_REVIEW        = 138
+	ID_TASK_STATUS               = 139
+	ID_INIT_RETRY                = 140
+	ID_TASK_STOP                 = 141
+	ID_MARK_HIGH_SKEW            = 142
+	ID_SYNC_STATUS               = 147
+	ID_TASK_CENTER               = 148
+	ID_ANALYSIS_REFRESH          = 149
+	ID_ANALYSIS_EXPORT           = 150
+	ID_ANALYSIS_TAB_OVERVIEW     = 151
+	ID_ANALYSIS_TAB_COMPARE      = 152
+	ID_ANALYSIS_TAB_TREND        = 153
+	ID_ANALYSIS_TAB_DISTRIBUTION = 154
+	ID_ANALYSIS_TAB_REGION       = 155
+	ID_TASK_DRAWER_CLOSE         = 156
+	ID_MARK_EXECUTE              = 157
+	ID_TASK_DRAWER_LOG           = 158
+	ID_ANALYSIS_DEEP_QUALITY     = 159
+	ID_ANALYSIS_REPORT           = 160
+	ID_ACTION_HELP               = 161
+	ID_REVIEW_SELECT_ALL         = 162
+	ID_REVIEW_SELECT_SEVERE      = 163
+	ID_REVIEW_SELECT_WARNING     = 164
+	ID_REVIEW_SELECT_OTHER       = 165
+	ID_REVIEW_WHY_DISABLED       = 166
+	// Reserved IDs for hidden legacy HWNDs. They are deliberately outside the
+	// active action-ID range so an accidental visibility regression cannot
+	// invoke a second route for a global action.
+	ID_LEGACY_QUALITY_CHECK    = 170
+	ID_LEGACY_TASK_STATUS_CONN = 171
+	ID_LEGACY_TASK_STATUS      = 172
+	ID_LEGACY_TASK_LOG         = 173
+	ID_LEGACY_FINE_BULK_SET    = 174
 )
 
 var (
@@ -410,7 +439,8 @@ func checkbox(label string, x, y, w, h int) uintptr {
 	return control("BUTTON", label, WS_TABSTOP|BS_AUTOCHECKBOX, x, y, w, h, 0)
 }
 func combo(x, y, w, h int) uintptr {
-	return control("COMBOBOX", "", WS_TABSTOP|CBS_DROPDOWNLIST|WS_VSCROLL, x, y, w, h, 0)
+	// Win32 COMBOBOX height includes the dropdown list, not just the closed field.
+	return control("COMBOBOX", "", WS_TABSTOP|CBS_DROPDOWNLIST|WS_VSCROLL, x, y, w, maxInt(h, 190), 0)
 }
 func font(h uintptr, sz, weight int) {
 	send(h, WM_SETFONT, cachedFont(sz, weight), 1)
@@ -455,8 +485,8 @@ func visible(h uintptr, yes bool) {
 	call(show, h, mode)
 }
 func refresh()        { call(invalidate, ui.window, 0, 0) }
-func alert(s string)  { call(msgbox, ui.window, ptr(s), ptr("AutoMesh 2024 R2"), MB_ICONERROR) }
-func notice(s string) { call(msgbox, ui.window, ptr(s), ptr("AutoMesh 2024 R2"), MB_ICONINFORMATION) }
+func alert(s string)  { call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1"), MB_ICONERROR) }
+func notice(s string) { call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1"), MB_ICONINFORMATION) }
 func enabled(h uintptr, yes bool) {
 	if h == 0 {
 		return
@@ -468,7 +498,7 @@ func enabled(h uintptr, yes bool) {
 	call(enableWindow, h, value)
 }
 func confirm(s string) bool {
-	return call(msgbox, ui.window, ptr(s), ptr("AutoMesh 2024 R2"), MB_YESNO|MB_ICONWARNING) == 6
+	return call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1"), MB_YESNO|MB_ICONWARNING) == 6
 }
 func freeGiB() float64 {
 	m := memoryStatus{}
@@ -480,61 +510,76 @@ func freeGiB() float64 {
 }
 
 type state struct {
-	instance, window          uintptr
-	ws                        Workspace
-	page                      int
-	scrollY                   int
-	scrollX                   int
-	layoutInProgress          bool
-	controls                  map[string]uintptr
-	mu                        sync.Mutex
-	status, progress, details string
-	progressPercent           int
-	errorText                 string
-	busy, connected, ready    bool
-	stopSignal                chan struct{}
-	stopRequested             bool
-	activePhase               string
-	initRunning               bool
-	autoConnecting            bool
-	initError                 string
-	initStarted               time.Time
-	initFinished              time.Time
-	systems                   []string
-	port                      int
-	security                  string
-	snapshot                  *Snapshot
-	last                      *Result
-	lastSummary               map[string]any
-	qualityResult             *Result
-	qualitySummary            map[string]any
-	qualityCheckedAt          time.Time
-	qualityStale              bool
-	qualityFingerprint        string
-	activeExport              string
-	activeApplyGlobal         bool
-	scannedSystem             string
-	scannedBaseMM             float64
-	preparedSystem            string
-	proposals                 []map[string]any
-	groupKeys                 []string
-	groupOverrides            map[string]float64
-	groupDisabled             map[string]bool
-	groupEnabled              map[string]bool
-	namedRows                 []Named
-	namedVisible              []Named
-	advice                    []NamedAdvice
-	sizeBuckets               []SizeBucket
-	bucketCollapsed           map[int]bool
-	planCustomized            bool
-	showAllNamed              bool
-	namedGeometry             string
-	selectedNamed             map[string]float64
-	pausedNamedSizes          map[string]float64
-	history                   []string
-	storageDoneDir            string
-	storageDoneFiles          int
-	storageError              error
+	instance, window              uintptr
+	ws                            Workspace
+	page                          int
+	scrollY                       int
+	scrollX                       int
+	layoutInProgress              bool
+	controls                      map[string]uintptr
+	mu                            sync.Mutex
+	status, progress, details     string
+	progressPercent               int
+	errorText                     string
+	busy, connected, ready        bool
+	stopSignal                    chan struct{}
+	stopRequested                 bool
+	activePhase                   string
+	initRunning                   bool
+	autoConnecting                bool
+	initError                     string
+	initStarted                   time.Time
+	initFinished                  time.Time
+	systems                       []string
+	port                          int
+	security                      string
+	snapshot                      *Snapshot
+	last                          *Result
+	lastSummary                   map[string]any
+	qualityResult                 *Result
+	qualitySummary                map[string]any
+	qualityCheckedAt              time.Time
+	qualityStale                  bool
+	qualityFingerprint            string
+	qualityMeshSignature          string
+	qualityProject                string
+	qualityQuickGeometrySignature string
+	shared                        sharedDataRuntime
+	engineeringSummary            map[string]any
+	engineeringSyncedAt           time.Time
+	qualityHistory                []QualitySnapshot
+	analysisBaseIndex             int
+	analysisTargetIndex           int
+	analysisTab                   int
+	analysisError                 string
+	taskCenterOpen                bool
+	taskCenterStatus              string
+	taskCenterText                string
+	taskCenterStatusUpdatedAt     time.Time
+	activeExport                  string
+	activeApplyGlobal             bool
+	scannedSystem                 string
+	scannedBaseMM                 float64
+	preparedSystem                string
+	proposals                     []map[string]any
+	groupKeys                     []string
+	groupOverrides                map[string]float64
+	groupDisabled                 map[string]bool
+	groupEnabled                  map[string]bool
+	namedRows                     []Named
+	namedVisible                  []Named
+	advice                        []NamedAdvice
+	sizeBuckets                   []SizeBucket
+	bucketCollapsed               map[int]bool
+	planCustomized                bool
+	showAllNamed                  bool
+	namedGeometry                 string
+	selectedNamed                 map[string]float64
+	pausedNamedSizes              map[string]float64
+	history                       []string
+	storageDoneDir                string
+	storageDoneFiles              int
+	storageError                  error
 	// R8.0 explicit, reviewed candidate selection: never implicit/all-selected.
 	reviewPlan                  WarningPlan
 	reviewPublished             map[string]bool
@@ -551,6 +596,12 @@ type state struct {
 	reviewDetailsOpened         bool
 	reviewPublishBlockedReason  string
 	reviewSelectedSignature     string
+	reviewConfirmDisabledReason string
+	// Local-only drafts for two opposite-quality interval conventions.
+	// Skewness: high is poor; Element Quality: low is poor.
+	lastMarkRule   int
+	skewRangeDraft [2]string
+	eqRangeDraft   [2]string
 }
 
 var ui = &state{controls: map[string]uintptr{}, showAllNamed: true, security: "auto", status: "未连接 Workbench", progress: "准备就绪", details: "首先连接已打开的 ANSYS Workbench 2024 R2。"}
@@ -628,7 +679,12 @@ func (a *state) build() {
 	a.put("navconn", button("连接工程", 16, 151, 168, 43, ID_NAV_CONNECT))
 	a.put("navfine", button("局部细化", 16, 198, 168, 43, ID_NAV_FINE))
 	a.put("navreport", button("质量报告", 16, 245, 168, 43, ID_NAV_REPORT))
-	a.put("navsettings", button("更多设置", 16, 292, 168, 43, ID_NAV_SETTINGS))
+	a.put("navanalysis", button("质量分析", 16, 292, 168, 43, ID_NAV_ANALYSIS))
+	a.put("navsettings", button("设置与维护", 16, 339, 168, 43, ID_NAV_SETTINGS))
+	// Global read-only services. Page navigation never starts these tasks.
+	a.put("syncstatus", button("同步工程", 520, 14, 84, 34, ID_SYNC_STATUS))
+	a.put("qualityupdate", button("更新质量", 612, 14, 92, 34, ID_QUALITY_CHECK))
+	a.put("taskcenter", button("任务中心", 712, 14, 92, 34, ID_TASK_CENTER))
 	a.put("auto", button("连接 Workbench", 245, 181, 300, 43, ID_AUTO))
 	a.put("scan", button("只读扫描", 248, 586, 132, 36, ID_SCAN))
 	a.put("report", button("查看报告", 392, 586, 132, 36, ID_REPORT))
@@ -642,11 +698,11 @@ func (a *state) build() {
 	font(a.ctl("port"), 16, 450)
 	a.put("link", button("自动查找并连接", 447, 306, 220, 38, ID_CONNECT))
 	a.put("initretry", button("重新检查初始化", 700, 306, 180, 38, ID_INIT_RETRY))
-	a.put("taskstatusconn", button("检查任务状态", 890, 306, 175, 38, ID_TASK_STATUS))
+	a.put("taskstatusconn", button("检查任务状态", 890, 306, 175, 38, ID_LEGACY_TASK_STATUS_CONN))
 	a.put("systems", combo(250, 445, 420, 190))
 	a.put("ack", checkbox("我已在 Workbench 中打开目标 Meshing 编辑器", 250, 507, 540, 32))
-	a.put("size", edit("12", 980, 347, 130, 34))
-	a.put("global", checkbox("使用参考尺寸覆盖全局（默认关闭）", 937, 393, 270, 32))
+	a.put("size", edit("12", 250, 162, 105, 32))
+	a.put("global", checkbox("应用参考尺寸覆盖全局（默认关闭）", 375, 162, 320, 32))
 	send(a.ctl("global"), BM_SETCHECK, 0, 0)
 	for _, spec := range []struct{ key, label string }{
 		{"gap", "细小相似面"}, {"hole", "重复面积面组"}, {"port", "已有人工命名面"}, {"curve", "其他较大面（默认关闭）"},
@@ -661,23 +717,23 @@ func (a *state) build() {
 	a.put("fineglobalreview", button("核对全局参数", 895, 641, 155, 34, ID_FINE_GLOBAL_REVIEW))
 	a.put("finegroups", control("LISTBOX", "", WS_TABSTOP|WS_BORDER|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT, 250, 307, 510, 232, ID_FINE_GROUP_SELECT))
 	a.put("finefilter", button("只看 AutoMesh", 250, 266, 165, 30, ID_FINE_FILTER))
-	a.put("finerefresh", button("刷新命名", 428, 266, 185, 30, ID_FINE_REFRESH))
-	a.put("finechinese", button("旧组中文化", 625, 266, 136, 30, ID_CHINESE_NAMES))
+	a.put("finerefresh", button("完整几何扫描", 428, 266, 185, 30, ID_FINE_REFRESH))
+	a.put("finechinese", button("旧版辅助命名中文化", 625, 266, 210, 35, ID_CHINESE_NAMES))
 	a.put("finegroupactive", checkbox("启用此命名组", 800, 403, 170, 30))
 	a.put("finegroupmm", edit("", 800, 460, 130, 34))
-	a.put("finegroupsave", button("保存单项尺寸", 800, 508, 170, 34, ID_FINE_GROUP_SAVE))
+	a.put("finegroupsave", button("应用尺寸", 800, 508, 170, 34, ID_FINE_GROUP_SAVE))
 	a.put("finesuggest", button("推荐并归组", 250, 552, 165, 30, ID_FINE_AUTO_RECOMMEND))
 	a.put("finebulkmm", edit("", 800, 556, 95, 30))
-	a.put("finebulkapply", button("整组设置", 906, 556, 110, 30, ID_FINE_BULK_SET))
+	a.put("finebulkapply", button("整组设置", 906, 556, 110, 30, ID_LEGACY_FINE_BULK_SET))
 	send(a.ctl("finecurve"), BM_SETCHECK, 0, 0)
 	a.put("export", edit("", 250, 307, 810, 38))
 	a.put("exportbutton", button("单独导出 .msh（需确认）", 250, 369, 282, 36, ID_EXPORT_MSH))
 	a.put("clearlease", button("解除已停止任务占用", 250, 596, 265, 35, ID_CLEAR_LEASE))
-	a.put("tasklog", button("查看任务与错误详情", 530, 596, 190, 35, ID_COPY))
+	a.put("tasklog", button("查看任务与错误详情", 530, 596, 190, 35, ID_LEGACY_TASK_LOG))
 	a.put("storagechange", button("更改数据存储目录", 250, 525, 230, 35, ID_STORAGE_CHANGE))
 	a.put("htmlreport", button("详细质量报告", 252, 591, 220, 38, ID_HTML_REPORT))
 	a.put("diagnose", button("风险抽样诊断", 524, 591, 220, 38, ID_DIAGNOSE))
-	a.put("qualitycheck", button("只读质量检查", 250, 570, 216, 33, ID_QUALITY_CHECK))
+	a.put("qualitycheck", button("只读质量检查", 250, 570, 216, 33, ID_LEGACY_QUALITY_CHECK))
 	a.put("mark", button("标记失败单元", 776, 591, 220, 38, ID_MARK))
 	a.put("markwarning", button("按默认警告标记", 1005, 580, 195, 38, ID_MARK_WARNING))
 	a.put("skewlow", edit("0.90", 360, 657, 72, 30))
@@ -686,16 +742,56 @@ func (a *state) build() {
 	a.put("warningplan", button("生成局部方案", 250, 624, 172, 34, ID_WARNING_PLAN))
 	a.put("warningview", button("查看影响范围", 432, 624, 160, 34, ID_WARNING_VIEW))
 	a.put("warningpublish", button("审核发布 Sizing", 602, 612, 205, 34, ID_WARNING_PUBLISH))
+	a.put("markrule", combo(250, 483, 220, 34))
+	add(a.ctl("markrule"), "ANSYS Worksheet 失败单元")
+	add(a.ctl("markrule"), "ANSYS Worksheet 警告单元")
+	add(a.ctl("markrule"), "自定义偏度区间")
+	add(a.ctl("markrule"), "自定义 Element Quality 区间")
+	send(a.ctl("markrule"), CB_SETCURSEL, 0, 0)
+	a.put("markexecute", button("标记目标单元", 485, 483, 160, 34, ID_MARK_EXECUTE))
 	// Native, scrollable ListView with per-row checkboxes; no webview, browser
 	// download or extra ANSYS process required for 200+ candidates.
 	a.initializeCandidateList()
+	a.put("reviewselectall", button("全选可用", 250, 267, 130, 32, ID_REVIEW_SELECT_ALL))
+	a.put("reviewselectsevere", button("偏度 ≥0.95", 390, 267, 140, 32, ID_REVIEW_SELECT_SEVERE))
+	a.put("reviewselectwarning", button("0.90–0.95", 540, 267, 140, 32, ID_REVIEW_SELECT_WARNING))
+	a.put("reviewselectother", button("其他 / 未取得", 690, 267, 155, 32, ID_REVIEW_SELECT_OTHER))
+	a.put("reviewclear", button("清空勾选", 855, 267, 110, 32, ID_REVIEW_CLEAR))
 	a.put("reviewrisk", checkbox("我已核查所选区域的几何位置、晶圆间隙和现有 Sizing", 250, 626, 720, 26))
 	a.put("reviewback", button("返回质量报告", 250, 652, 170, 34, ID_REVIEW_BACK))
-	a.put("reviewclear", button("清空勾选", 430, 652, 140, 34, ID_REVIEW_CLEAR))
-	a.put("reviewdetails", button("查看全部影响域", 582, 652, 170, 34, ID_REVIEW_DETAILS))
-	a.put("reviewconfirm", button("审核所选并发布", 768, 652, 220, 34, ID_REVIEW_CONFIRM))
+	a.put("reviewdetails", button("查看全部影响域", 462, 652, 180, 34, ID_REVIEW_DETAILS))
+	a.put("reviewreason", button("不能发布？", 660, 652, 170, 34, ID_REVIEW_WHY_DISABLED))
+	a.put("reviewconfirm", button("审核所选并发布", 870, 652, 220, 34, ID_REVIEW_CONFIRM))
 	enabled(a.ctl("reviewconfirm"), false)
-	a.put("taskstatus", button("任务状态", 810, 612, 190, 34, ID_TASK_STATUS))
+	a.put("taskstatus", button("任务状态", 810, 612, 190, 34, ID_LEGACY_TASK_STATUS))
+	a.put("analysisbase", combo(250, 205, 300, 34))
+	a.put("analysistarget", combo(570, 205, 300, 34))
+	a.put("analysisrefresh", button("刷新历史", 885, 205, 112, 34, ID_ANALYSIS_REFRESH))
+	a.put("analysisexport", button("导出 CSV", 1007, 205, 112, 34, ID_ANALYSIS_EXPORT))
+	a.put("analysisdeep", button("采集原生分布", 1129, 205, 150, 34, ID_ANALYSIS_DEEP_QUALITY))
+	a.put("analysisreport", button("导出完整报告", 940, 150, 150, 32, ID_ANALYSIS_REPORT))
+	a.put("analysisbodylist", control("EDIT", "", WS_BORDER|WS_TABSTOP|WS_VSCROLL|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY, 250, 690, 700, 210, 0))
+	font(a.ctl("analysisbodylist"), 12, 400)
+	send(a.ctl("analysisbodylist"), 0x00C5 /*EM_LIMITTEXT*/, 2*1024*1024, 0)
+	a.put("actionhelp", button("操作说明", 0, 0, 92, 34, ID_ACTION_HELP))
+	for _, spec := range []struct {
+		key, label string
+		id         int
+	}{
+		{"analysisoverview", "总览与趋势", ID_ANALYSIS_TAB_OVERVIEW},
+		{"analysiscompare", "前后对比", ID_ANALYSIS_TAB_COMPARE},
+		{"analysisdistribution", "分布分析", ID_ANALYSIS_TAB_DISTRIBUTION},
+		{"analysisregion", "区域与历史", ID_ANALYSIS_TAB_REGION},
+	} {
+		a.put(spec.key, button(spec.label, 250, 150, 150, 32, spec.id))
+	}
+	// Native right-side task drawer. It is an ordinary local status view; it
+	// never dispatches or retries an ANSYS command by opening the panel.
+	drawer := control("EDIT", "", WS_BORDER|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|WS_VSCROLL, 0, 0, 10, 10, 0)
+	a.put("taskdrawertext", drawer)
+	font(drawer, 13, 450)
+	a.put("taskdrawerclose", button("关闭", 0, 0, 100, 32, ID_TASK_DRAWER_CLOSE))
+	a.put("taskdrawerlog", button("打开任务日志", 0, 0, 140, 32, ID_TASK_DRAWER_LOG))
 	if b, err := os.ReadFile(a.ws.path("skew_range_settings.json")); err == nil {
 		var saved struct {
 			Low  float64 `json:"low"`
@@ -706,46 +802,64 @@ func (a *state) build() {
 			set(a.ctl("skewhigh"), fmt.Sprintf("%.3f", saved.High))
 		}
 	}
+	a.lastMarkRule = 0
+	a.skewRangeDraft = [2]string{read(a.ctl("skewlow")), read(a.ctl("skewhigh"))}
+	a.eqRangeDraft = [2]string{"0.00", "0.10"}
 	a.put("taskstop", button("请求停止任务", 20, 690, 165, 30, ID_TASK_STOP))
 	visible(a.ctl("taskstop"), false)
 	a.switchPage(0)
 }
+func (a *state) onMarkerRuleChanged() {
+	next := int(send(a.ctl("markrule"), CB_GETCURSEL, 0, 0))
+	previous := a.lastMarkRule
+	if previous == 2 {
+		a.skewRangeDraft = [2]string{read(a.ctl("skewlow")), read(a.ctl("skewhigh"))}
+	} else if previous == 3 {
+		a.eqRangeDraft = [2]string{read(a.ctl("skewlow")), read(a.ctl("skewhigh"))}
+	}
+	if next == 2 && previous != 2 {
+		set(a.ctl("skewlow"), a.skewRangeDraft[0])
+		set(a.ctl("skewhigh"), a.skewRangeDraft[1])
+	} else if next == 3 && previous != 3 {
+		set(a.ctl("skewlow"), a.eqRangeDraft[0])
+		set(a.ctl("skewhigh"), a.eqRangeDraft[1])
+	}
+	a.lastMarkRule = next
+	custom := a.page == 3 && isCustomQualityRule(next)
+	visible(a.ctl("skewlow"), custom)
+	visible(a.ctl("skewhigh"), custom)
+	a.updateActionStates()
+}
+
 func (a *state) switchPage(page int) {
 	begin := time.Now()
 	a.page = page
 	a.scrollY = 0 // Every page opens at its first step, not a stale scrolled position.
 	a.scrollX = 0
-	home, conn, fine, settings := page == 0, page == 1, page == 2, page == 4
-	for _, n := range []string{"auto", "scan", "report", "open", "size", "global"} {
-		visible(a.ctl(n), home)
+	if page == 4 {
+		_ = a.loadQualityHistory()
 	}
-	for _, n := range []string{"port", "link", "initretry", "taskstatusconn", "systems", "ack"} {
-		visible(a.ctl(n), conn)
+
+	// Page ownership is defined once in pageControlPage. Global controls are
+	// handled separately below; navigation never starts a scan or ANSYS task.
+	for name, hwnd := range a.controls {
+		ownerPage, pageOwned := pageControlPage(name)
+		if pageOwned {
+			showOnPage := page == ownerPage
+			if name == "skewlow" || name == "skewhigh" {
+				showOnPage = showOnPage && isCustomQualityRule(int(send(a.ctl("markrule"), CB_GETCURSEL, 0, 0)))
+			}
+			visible(hwnd, showOnPage)
+		}
 	}
-	visible(a.ctl("export"), settings)
-	visible(a.ctl("exportbutton"), settings)
-	visible(a.ctl("clearlease"), settings)
-	visible(a.ctl("tasklog"), settings)
-	visible(a.ctl("storagechange"), settings)
-	for _, k := range []string{"gap", "hole", "port", "curve"} {
-		// Previous four-category refinement UI is deprecated; use existing NS only.
-		visible(a.ctl("fine"+k), false)
-		visible(a.ctl("fine"+k+"mm"), false)
+	for _, name := range deprecatedDuplicateControls() {
+		visible(a.ctl(name), false)
 	}
-	visible(a.ctl("finenames"), fine)
-	visible(a.ctl("fineprepare"), fine)
-	visible(a.ctl("finegenerate"), fine)
-	visible(a.ctl("fineglobalreview"), fine)
-	for _, k := range []string{"finegroups", "finegroupactive", "finegroupmm", "finegroupsave", "finefilter", "finerefresh", "finechinese", "finesuggest", "finebulkmm", "finebulkapply"} {
-		visible(a.ctl(k), fine)
+	for _, name := range []string{"syncstatus", "qualityupdate", "taskcenter", "actionhelp"} {
+		visible(a.ctl(name), true)
 	}
-	for _, n := range []string{"htmlreport", "diagnose", "mark", "markwarning", "markhighskew", "skewlow", "skewhigh", "qualitycheck", "warningplan", "warningview", "warningpublish", "taskstatus"} {
-		visible(a.ctl(n), page == 3)
-	}
-	for _, n := range []string{"reviewlist", "reviewrisk", "reviewback", "reviewclear", "reviewdetails", "reviewconfirm"} {
-		visible(a.ctl(n), page == 5)
-	}
-	visible(a.ctl("taskstop"), a.busy || a.hasPendingStopTarget())
+	visible(a.ctl("analysisbodylist"), page == 4 && a.analysisTab == 3)
+	a.syncTaskDrawerControls()
 	a.layout() // Reposition child HWNDs when a new page resets the scroll offset.
 	a.updateActionStates()
 	if elapsed := time.Since(begin); elapsed > navigationDurationMax {
@@ -788,18 +902,38 @@ func (a *state) layout() {
 			continue
 		}
 		isSidebar := strings.HasPrefix(name, "nav")
+		isTopPinned := name == "syncstatus" || name == "qualityupdate" || name == "taskcenter" || name == "actionhelp"
 		y := box.Y
 		x := box.X
-		if !isSidebar {
+		if !isSidebar && !isTopPinned {
 			y -= a.scrollY
 			x -= a.scrollX
 		}
-		repoint(h, x, y, box.W, box.H)
-		if !isSidebar {
-			clipScrolledControl(h, x, y, box.W, box.H, int(rc.R), int(rc.B))
+		// Retain the native ComboBox dropdown height during every layout/resize.
+		// Planned rectangles describe the CLOSED control for overlap tests.
+		windowH := nativeComboWindowHeight(name, box.H)
+		repoint(h, x, y, box.W, windowH)
+		if name == "actionhelp" {
+			visible(h, true)
+		}
+		if !isSidebar && !isTopPinned {
+			clipScrolledControl(h, x, y, box.W, windowH, int(rc.R), int(rc.B))
 		}
 	}
-	repoint(a.ctl("taskstop"), 20, int(rc.B)-98, 165, 30)
+	if a.taskCenterOpen {
+		panelW := minInt(440, maxInt(360, int(rc.R)-220))
+		panelX := int(rc.R) - panelW
+		repoint(a.ctl("taskdrawertext"), panelX+12, 112, panelW-24, maxInt(220, int(rc.B)-224))
+		repoint(a.ctl("taskdrawerclose"), int(rc.R)-112, 72, 96, 32)
+		if a.busy || a.hasPendingStopTarget() {
+			repoint(a.ctl("taskstop"), panelX+18, int(rc.B)-74, 160, 32)
+			repoint(a.ctl("taskdrawerlog"), panelX+panelW-170, int(rc.B)-74, 150, 32)
+		} else {
+			repoint(a.ctl("taskdrawerlog"), panelX+panelW-170, int(rc.B)-74, 150, 32)
+		}
+	} else {
+		repoint(a.ctl("taskstop"), 20, int(rc.B)-98, 165, 30)
+	}
 	if !resizeActive {
 		refresh()
 	}
@@ -822,30 +956,62 @@ func (a *state) screen(dc uintptr, w, h int) {
 	solid(dc, 22, 16, 34, 34, cobalt, 12)
 	textAt(dc, "A", 31, 16, 27, 34, 22, 800, white)
 	textAt(dc, "AutoMesh", 66, 13, 230, 38, 22, 700, navy)
-	textAt(dc, "2024 R2  ·  自动网格工作台", 256, 17, 350, 32, 13, 400, slate)
-	if a.connected {
-		solid(dc, w-235, 17, 195, 30, greenbg, 16)
-		textAt(dc, "●  已连接 Workbench", w-223, 18, 177, 27, 13, 600, green)
+	if w >= 1080 {
+		textAt(dc, "2024 R2  ·  网格工作台", 256, 14, 245, 22, 13, 400, slate)
 	} else {
-		solid(dc, w-218, 17, 180, 30, color(241, 244, 249), 16)
-		textAt(dc, "○  等待连接", w-202, 18, 154, 27, 13, 500, slate)
+		textAt(dc, "R8.1", 315, 14, 74, 22, 12, 500, slate)
+	}
+	sharedView := a.sharedDataStatus()
+	projectLabel := "未同步"
+	if sharedView.Project != "" {
+		projectLabel = filepath.Base(strings.TrimRight(sharedView.Project, "/\\"))
+	}
+	meshLabel := sharedView.MeshSystem
+	if meshLabel == "" {
+		meshLabel = "未选择"
+	}
+	qualityLabel := sharedStateLabel(sharedView.QualityState)
+	syncLabel := sharedStateLabel(sharedView.EngineeringState)
+	geometryLabel := sharedStateLabel(sharedView.GeometryState)
+	statusWidth := 255
+	if w < 1080 {
+		statusWidth = 140
+	}
+	textAt(dc, shorten("工程 "+shorten(projectLabel, 10)+" · "+shorten(meshLabel, 7)+" · 同步 "+syncLabel+" · 几何 "+geometryLabel+" · 质量 "+qualityLabel, 38), 256, 39, statusWidth, 17, 10, 450, slate)
+	switch sharedView.ConnectionState {
+	case SharedStateReady:
+		solid(dc, w-125, 17, 110, 30, greenbg, 16)
+		textAt(dc, "● 已连接", w-115, 18, 90, 27, 12, 600, green)
+	case SharedStateLoading:
+		solid(dc, w-125, 17, 110, 30, bluepale, 16)
+		textAt(dc, "◌ 连接中", w-115, 18, 90, 27, 12, 600, cobalt)
+	case SharedStateFailed:
+		solid(dc, w-125, 17, 110, 30, stoppale, 16)
+		textAt(dc, "● 连接失败", w-115, 18, 90, 27, 12, 600, stopink)
+	default:
+		solid(dc, w-125, 17, 110, 30, color(241, 244, 249), 16)
+		textAt(dc, "○ 未连接", w-115, 18, 90, 27, 12, 500, slate)
 	}
 	textAt(dc, "工作流程", 23, 77, 150, 25, 12, 650, slate)
 	if !a.busy {
-		textAt(dc, "下一步", 22, 360, 150, 24, 12, 700, navy)
+		textAt(dc, "下一步", 22, 399, 150, 24, 12, 700, navy)
 		next := "选择网格操作"
-		if !a.connected {
+		if sharedView.ConnectionState != SharedStateReady {
 			next = "连接现有 Workbench"
-		} else if a.snapshot == nil {
-			next = "对当前 Mesh 只读扫描"
+		} else if sharedView.EngineeringState != SharedStateReady {
+			next = "同步工程信息"
+		} else if sharedView.GeometryState != SharedStateReady {
+			next = "执行完整几何扫描"
+		} else if sharedView.QualityState != SharedStateReady {
+			next = "更新当前网格质量"
 		} else if a.page == 3 {
 			next = "标记 → 预览 → 审核"
 		} else {
 			next = "核对设置与质量"
 		}
-		textAt(dc, next, 22, 388, 163, 23, 11, 450, slate)
+		textAt(dc, next, 22, 427, 163, 23, 11, 450, slate)
 		if a.errorText != "" {
-			textAt(dc, "有错误记录 · 详情见设置", 22, 418, 165, 24, 10, 600, warningcolor)
+			textAt(dc, "有错误记录 · 详情见任务中心", 22, 456, 165, 24, 10, 600, warningcolor)
 		}
 	}
 	// Always-visible progress, including when the user is on page 2 or 3.
@@ -868,6 +1034,9 @@ func (a *state) screen(dc uintptr, w, h int) {
 	}
 	textAt(dc, "仅接管现有会话", 23, h-58, 168, 19, 11, 450, slate)
 	textAt(dc, "不新建工程 · 不运行 Fluent", 23, h-35, 174, 18, 10, 400, slate)
+	if !a.busy {
+		textAt(dc, "F1 · 操作禁用原因", 22, 486, 170, 21, 10, 500, slate)
+	}
 	x := 220
 	cw := w - 240
 	cw = uiWidth(w)
@@ -886,8 +1055,10 @@ func (a *state) screen(dc uintptr, w, h int) {
 	case 3:
 		a.drawReport(dc, x, cw)
 	case 4:
-		a.drawSettings(dc, x, cw)
+		a.drawAnalysis(dc, x, cw)
 	case 5:
+		a.drawSettings(dc, x, cw)
+	case 6:
 		a.drawCandidateReview(dc, x, cw)
 	}
 	if saved != 0 {
@@ -895,10 +1066,11 @@ func (a *state) screen(dc uintptr, w, h int) {
 	}
 }
 func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
+	sharedView := a.sharedDataStatus()
 	solid(dc, x, 80, cw, 150, color(239, 246, 255), 20)
-	textAt(dc, "AutoMesh · 自动网格", x+28, 93, cw-55, 39, 25, 740, navy)
-	textAt(dc, "连接现有工程  →  只读扫描  →  审核局部细化  →  确认生成", x+28, 132, cw-60, 27, 14, 450, slate)
-	textAt(dc, "不会重新启动 ANSYS，也不会运行 Fluent", x+360, 178, cw-385, 37, 12, 450, slate)
+	textAt(dc, "AutoMesh · 网格优化工作台", x+28, 93, cw-55, 39, 25, 740, navy)
+	textAt(dc, "同步工程  →  完整扫描  →  质量检测  →  诊断细化  →  历史对比", x+28, 132, cw-60, 27, 14, 450, slate)
+	textAt(dc, "页面切换不触发扫描；质量检测由顶部工具栏统一触发。", x+360, 178, cw-385, 37, 12, 450, slate)
 	gap := 12
 	col := (cw - 2*gap) / 3
 	y := homeSummaryY
@@ -907,46 +1079,70 @@ func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
 	}
 	textAt(dc, "当前工程", x+20, y+13, col-36, 27, 16, 700, navy)
 	rule(dc, x+20, y+45, x+col-20, y+45, lineclr)
-	project := "尚未扫描"
-	if a.snapshot != nil {
-		project = filepath.Base(strings.TrimRight(a.snapshot.Project, "/\\"))
+	project := "尚未同步"
+	if sharedView.Project != "" {
+		project = filepath.Base(strings.TrimRight(sharedView.Project, "/\\"))
 	}
 	textAt(dc, shorten(project, 26), x+20, y+54, col-35, 26, 15, 650, navy)
-	sys := "尚未连接"
-	if a.connected && len(a.systems) > 0 {
-		i := int(send(a.ctl("systems"), CB_GETCURSEL, 0, 0))
-		if i >= 0 && i < len(a.systems) {
-			sys = a.systems[i]
-		}
+	sys := sharedView.MeshSystem
+	if sys == "" {
+		sys = "尚未连接"
 	}
 	textAt(dc, "网格系统  "+shorten(sys, 23), x+20, y+88, col-35, 22, 13, 450, slate)
-	unit := "未读取"
-	if a.snapshot != nil {
-		cad := a.snapshot.GeometryUnit
-		display := a.snapshot.DisplayLengthUnit
-		if display == "" || display == "unknown" {
-			display = "未识别"
+	unit := "等待完整几何扫描"
+	switch sharedView.GeometryState {
+	case SharedStateLoading:
+		unit = "完整几何扫描中"
+	case SharedStateFailed:
+		unit = "完整几何扫描失败"
+	case SharedStateStale:
+		unit = "上次扫描数据已过期"
+	case SharedStateReady:
+		if a.snapshot != nil {
+			cad := a.snapshot.GeometryUnit
+			display := a.snapshot.DisplayLengthUnit
+			if display == "" || display == "unknown" {
+				display = "未识别"
+			}
+			unit = "Meshing " + display + " / CAD " + cad
 		}
-		unit = "Meshing " + display + " / CAD " + cad
 	}
 	textAt(dc, "几何规模  "+a.bodyFace(), x+20, y+115, col-35, 24, 13, 450, slate)
-	textAt(dc, "显示单位  "+unit, x+20, y+142, col-35, 22, 12, 450, slate)
+	textAt(dc, "几何单位  "+unit, x+20, y+142, col-35, 22, 12, 450, slate)
 	x2 := x + col + gap
-	textAt(dc, "识别摘要", x2+20, y+13, col-36, 27, 16, 700, navy)
+	textAt(dc, "工程信息同步", x2+20, y+13, col-36, 27, 16, 700, navy)
 	rule(dc, x2+20, y+45, x2+col-20, y+45, lineclr)
-	ev := asMap(a.report()["geometry_evidence"])
-	if len(ev) == 0 {
-		textAt(dc, "等待首次只读扫描", x2+20, y+60, col-35, 27, 14, 500, slate)
+	if len(a.engineeringSummary) == 0 {
+		textAt(dc, sharedView.EngineeringMessage, x2+20, y+60, col-35, 27, 14, 500, slate)
 	} else {
-		textAt(dc, "有效面积面  "+printable(ev["valid_area_faces"]), x2+20, y+54, col-35, 25, 13, 500, navy)
-		textAt(dc, "候选面积组  "+printable(ev["candidate_groups_published"]), x2+20, y+90, col-35, 25, 13, 500, navy)
-		textAt(dc, "未列出组  "+printable(ev["candidate_groups_omitted"]), x2+20, y+127, col-35, 25, 13, 500, navy)
+		textAt(dc, "几何体  "+printable(a.engineeringSummary["body_count"]), x2+20, y+54, col-35, 25, 13, 500, navy)
+		textAt(dc, "几何面  "+printable(a.engineeringSummary["face_count"]), x2+20, y+90, col-35, 25, 13, 500, navy)
+		textAt(dc, "命名 / 控制  "+printable(a.engineeringSummary["named_count"])+" / "+printable(a.engineeringSummary["control_count"]), x2+20, y+127, col-35, 25, 13, 500, navy)
+		textAt(dc, "状态  "+sharedView.EngineeringMessage, x2+20, y+153, col-35, 18, 10, 450, slate)
 	}
 	x3 := x + 2*(col+gap)
-	textAt(dc, "网格参数", x3+20, y+13, col-36, 27, 16, 700, navy)
+	textAt(dc, "网格质量", x3+20, y+13, col-36, 27, 16, 700, navy)
 	rule(dc, x3+20, y+45, x3+col-20, y+45, lineclr)
-	textAt(dc, "参考尺寸 (mm)", x3+20, y+55, col-40, 24, 13, 500, navy)
-	textAt(dc, "所有尺寸以 mm 输入；全局默认保留原值", x3+20, y+155, col-40, 19, 11, 400, slate)
+	quality := a.qualitySummary
+	if quality == nil {
+		textAt(dc, "质量数据："+sharedView.QualityMessage, x3+20, y+58, col-40, 24, 13, 550, slate)
+	} else {
+		q := asMap(quality["quality"])
+		skew := asMap(q["skewness"])
+		oq := asMap(q["orthogonal_quality"])
+		eq := asMap(q["element_quality"])
+		textAt(dc, "单元数  "+printable(quality["mesh_elements"]), x3+20, y+55, col-40, 23, 13, 550, navy)
+		textAt(dc, "最大偏度  "+printable(skew["max"]), x3+20, y+87, col-40, 23, 13, 550, navy)
+		textAt(dc, "正交最小  "+printable(oq["min"])+"  ·  单元质量平均  "+metricText(numberAt(eq, "mean")), x3+20, y+119, col-40, 23, 11, 550, navy)
+	}
+	qualityState := "质量状态  " + sharedView.QualityMessage
+	qualityColor := warningcolor
+	if sharedView.QualityState == SharedStateReady {
+		qualityColor = green
+	} else if sharedView.QualityState == SharedStateFailed {
+		qualityColor = stopink
+	}
+	textAt(dc, qualityState, x3+20, y+151, col-40, 18, 11, 650, qualityColor)
 	y2 := homeLowerY
 	left := cw * 63 / 100
 	right := cw - left - gap
@@ -977,26 +1173,31 @@ func (a *state) drawHome(dc uintptr, x, cw, w, h int) {
 	x4 := x + left + gap
 	textAt(dc, "网格质量", x4+20, y2+10, right-36, 26, 16, 700, navy)
 	rule(dc, x4+20, y2+44, x4+right-20, y2+44, lineclr)
-	quality := asMap(a.report()["quality"])
-	skew := asMap(quality["skewness"])
-	textAt(dc, "单元数  "+printable(a.report()["mesh_elements"]), x4+20, y2+52, right-37, 24, 13, 550, navy)
+	qualityMetrics := asMap(a.qualitySummary["quality"])
+	skew := asMap(qualityMetrics["skewness"])
+	textAt(dc, "单元数  "+printable(a.qualitySummary["mesh_elements"]), x4+20, y2+52, right-37, 24, 13, 550, navy)
 	textAt(dc, "最大偏度  "+printable(skew["max"]), x4+20, y2+80, right-37, 24, 13, 550, navy)
-	gate := printable(a.report()["quality_gate"])
-	if a.last != nil && a.last.Phase == "diagnose" {
-		gate = "只读诊断"
-	}
-	if gate == "—" {
-		gate = "等待计算"
+	gate := sharedView.QualityMessage
+	if sharedView.QualityState == SharedStateReady && a.qualitySummary != nil {
+		gate = printable(a.qualitySummary["quality_status"]) + " · " + sharedView.QualityMessage
 	}
 	textAt(dc, "质量状态  "+shorten(gate, 19), x4+20, y2+108, right-37, 24, 12, 500, warningcolor)
-	textAt(dc, "缺少真实质量数据时不显示通过", x4+20, y2+139, right-37, 22, 11, 400, slate)
-	textAt(dc, "建议先扫描并审核局部细化；现有网格不会被覆盖。", x, 645, cw, 22, 11, 400, slate)
+	eq := asMap(qualityMetrics["element_quality"])
+	textAt(dc, "平均单元质量  "+metricText(numberAt(eq, "mean"))+"（未取得时不估算）", x4+20, y2+139, right-37, 22, 11, 450, slate)
+	textAt(dc, "下一步：在局部细化完成完整几何扫描；在质量分析查看历史对比。", x, 645, cw, 22, 11, 400, slate)
 }
 func (a *state) bodyFace() string {
-	if a.snapshot == nil {
-		return "—"
+	view := a.sharedDataStatus()
+	if a.snapshot != nil && view.GeometryState == SharedStateReady {
+		return fmt.Sprintf("%d 体 / %d 面", len(a.snapshot.Bodies), len(a.snapshot.Faces))
 	}
-	return fmt.Sprintf("%d 体 / %d 面", len(a.snapshot.Bodies), len(a.snapshot.Faces))
+	if view.GeometryState == SharedStateLoading || view.GeometryState == SharedStateFailed || view.GeometryState == SharedStateStale {
+		return view.GeometryMessage
+	}
+	if a.engineeringSummary != nil {
+		return printable(a.engineeringSummary["body_count"]) + " 体 / " + printable(a.engineeringSummary["face_count"]) + " 面（轻量同步摘要；未替代完整扫描）"
+	}
+	return view.GeometryMessage
 }
 func (a *state) drawConnect(dc uintptr, x, cw int) {
 	textAt(dc, "连接工程", x+16, 83, cw-32, 43, 25, 700, navy)
@@ -1010,19 +1211,27 @@ func (a *state) drawConnect(dc uintptr, x, cw int) {
 	textAt(dc, "系统名称", x+30, 414, cw-60, 22, 13, 450, slate)
 	textAt(dc, "勾选后才能执行扫描；不会自动启动隐藏的 Meshing。", x+30, 544, cw-60, 26, 12, 400, slate)
 	rule(dc, x+30, 581, x+cw-30, 581, lineclr)
-	status := "待连接"
-	if a.initRunning {
-		status = "初始化中：检查内部 Worker / 连接脚本（未操作 ANSYS）"
-	} else if a.initError != "" {
-		status = "初始化失败：" + shorten(a.initError, 85)
-	} else if !a.ready {
-		status = "初始化状态未知：请点击『重新检查初始化』"
-	}
-	if a.connected {
+	connectionView := a.sharedDataStatus()
+	status := "待连接：请选择自动查找连接，或使用高级端口设置"
+	switch connectionView.ConnectionState {
+	case SharedStateLoading:
+		if a.initRunning {
+			status = "初始化中：检查内部 Worker / 连接脚本（未操作 ANSYS）"
+		} else {
+			status = "正在连接，请勿重复点击"
+		}
+	case SharedStateFailed:
+		message := a.shared.connectionError
+		if message == "" {
+			message = a.initError
+		}
+		status = "连接/初始化失败：" + shorten(message, 85)
+	case SharedStateReady:
 		status = "Workbench 已连接 · 请选择当前工程中的 Mesh 系统"
-	}
-	if a.busy {
-		status = "正在连接，请勿重复点击"
+	default:
+		if !a.ready {
+			status = "初始化状态未知：请点击『重新检查初始化』"
+		}
 	}
 	textAt(dc, status, x+30, 596, cw-60, 27, 13, 600, func() uintptr {
 		if a.connected {
@@ -1076,11 +1285,8 @@ func (a *state) drawFine(dc uintptr, x, cw int) {
 	textAt(dc, "直接使用 Meshing 现有命名", x+16, 83, cw-32, 43, 25, 700, navy)
 	textAt(dc, "不重新选面：读取已有 Named Selection → 按组设置尺寸 → 绑定 Sizing。", x+16, 132, cw-32, 30, 13, 400, slate)
 	solid(dc, x, 184, cw, 494, white, 20)
-	globalLine := "当前全局设置：未扫描（参考尺寸不能当作真实值）"
-	if a.snapshot != nil {
-		globalLine = "上次扫描全局：Element " + actualField(a.snapshot.Mesh, "ElementSize") + " · Max " + actualField(a.snapshot.Mesh, "MaximumSize") + " · 增长 " + actualField(a.snapshot.Mesh, "GrowthRate")
-	}
-	textAt(dc, shorten(globalLine, 115), x+16, 162, cw-32, 20, 11, 500, slate)
+	textAt(dc, "参考尺寸 (mm)", x+30, 162, 100, 24, 12, 550, slate)
+	textAt(dc, "默认只作局部尺寸参考；全局覆盖需人工勾选并校核。", x+610, 162, cw-640, 24, 11, 450, slate)
 	textAt(dc, "尺寸相近的命名组（单击选择／双击折叠）", x+30, 202, 590, 27, 17, 700, navy)
 	textAt(dc, "自动推荐只是待审核方案；不重新选面，不会立即生成网格。", x+30, 231, 550, 23, 12, 450, slate)
 	_, rightX, rightW := fineColumns(x + cw + 20)
@@ -1100,10 +1306,21 @@ func (a *state) drawFine(dc uintptr, x, cw int) {
 	}
 	textAt(dc, shorten(selected, 32), rightX, 249, rightW, 43, 14, 650, cobalt)
 	textAt(dc, count, rightX, 299, rightW, 24, 13, 450, slate)
+	if idx >= 0 && idx < len(a.namedVisible) {
+		n := a.namedVisible[idx]
+		if _, isGroup := parseBucketMarker(n.Name); !isGroup {
+			status := namedSizingCoverage(a.snapshot, n)
+			color := slate
+			if strings.Contains(status, "交叠") || strings.Contains(status, "不明") || strings.Contains(status, "失效") {
+				color = warningcolor
+			}
+			textAt(dc, shorten("Sizing 覆盖："+status, 47), rightX, 319, rightW, 19, 11, 500, color)
+		}
+	}
 	rule(dc, rightX, 338, x+cw-30, 338, lineclr)
 	textAt(dc, "1. 启用／停用选中组或单项", rightX, 355, rightW, 24, 13, 500, navy)
-	textAt(dc, "2. 单项尺寸（mm）", rightX, 434, rightW, 24, 13, 500, navy)
-	textAt(dc, "整组尺寸（mm），点击「整组设置」应用：", rightX, 537, rightW, 18, 11, 450, navy)
+	textAt(dc, "2. 目标尺寸（mm）", rightX, 434, rightW, 24, 13, 500, navy)
+	textAt(dc, "应用范围随左侧选择自动切换：单项或整组。", rightX, 537, rightW, 18, 11, 450, navy)
 	textAt(dc, "已启用", x+215, 554, 75, 25, 13, 600, navy)
 	listW, _, _ := fineColumns(x + cw + 20)
 	textAt(dc, fmt.Sprintf("%d 项", len(a.selectedNamed)), x+280, 554, listW-285, 25, 13, 450, green)
@@ -1124,122 +1341,93 @@ func (a *state) drawFine(dc uintptr, x, cw int) {
 }
 
 func (a *state) drawReport(dc uintptr, x, cw int) {
-	textAt(dc, "质量报告", x+16, 83, cw-32, 43, 25, 700, navy)
+	textAt(dc, "质量诊断", x+16, 83, cw-32, 43, 25, 700, navy)
 	if a.qualityStale && a.qualityResult != nil {
-		textAt(dc, "历史数据 · 需重新检查", x+cw-230, 88, 202, 26, 12, 650, warningcolor)
+		textAt(dc, "质量数据可能过期", x+cw-230, 88, 202, 26, 12, 650, warningcolor)
 	}
-	textAt(dc, "查看网格数量、质量和风险单元；查看不会修改网格。", x+16, 130, cw-32, 26, 13, 400, slate)
-	textAt(dc, "质量检查   /   偏度标记   /   方案审核   /   发布控制", x+18, 157, cw-36, 22, 12, 450, slate)
+	textAt(dc, "发现异常单元、生成局部优化建议；质量测量统一由顶部「更新质量」触发。", x+16, 130, cw-32, 26, 13, 400, slate)
+	textAt(dc, "质量诊断  /  目标标记  /  局部方案审核", x+18, 157, cw-36, 22, 12, 450, slate)
 	solid(dc, x, 185, cw, 508, white, 18)
 	if a.busy && a.activePhase != "" {
-		textAt(dc, "运行中："+taskDisplayName(a.activePhase)+"（尚未确认完成）", x+30, 183, cw-60, 24, 12, 650, warningcolor)
+		textAt(dc, "运行中："+taskDisplayName(a.activePhase)+"（尚未确认完成）", x+30, 194, cw-60, 24, 12, 650, warningcolor)
 	}
-	if a.last == nil {
-		textAt(dc, "尚无检测结果", x+30, 212, cw-60, 34, 18, 600, navy)
-		textAt(dc, "先回到概览，连接工程后点击「只读扫描」。", x+30, 258, cw-60, 28, 14, 400, slate)
+	if a.qualitySummary == nil {
+		textAt(dc, "尚无质量检测结果", x+30, 222, cw-60, 34, 18, 600, navy)
+		textAt(dc, "点击顶部「更新质量」读取当前 Meshing 实测指标。此操作不需要先完整扫描几何。", x+30, 265, cw-60, 28, 13, 450, slate)
 	} else {
-		textAt(dc, "最近结果："+taskDisplayName(a.last.Phase)+"  ·  "+taskStateText(a.last.Status), x+30, 209, cw-60, 30, 16, 650, navy)
-		rule(dc, x+30, 245, x+cw-30, 245, lineclr)
-		summaries := []string{}
-		if a.last.Phase == "warning_refine_preview" {
-			summaries = append(summaries, "警告单元总数："+printable(a.lastSummary["warning_count"]))
-			summaries = append(summaries, "建议局部影响域："+printable(a.lastSummary["group_count"]))
-			summaries = append(summaries, "候选覆盖 / 未覆盖："+printable(a.lastSummary["covered_count"])+" / "+printable(a.lastSummary["uncovered_count"]))
-			summaries = append(summaries, "仅为球形局部 Sizing 建议，非质量改善保证")
+		q := asMap(a.qualitySummary["quality"])
+		skew := asMap(q["skewness"])
+		oq := asMap(q["orthogonal_quality"])
+		eq := asMap(q["element_quality"])
+		textAt(dc, "当前质量数据 · "+taskStateText(a.qualityResult.Status), x+30, 216, cw-60, 28, 16, 650, navy)
+		textAt(dc, "单元数："+printable(a.qualitySummary["mesh_elements"])+"    最大偏度："+printable(skew["max"])+"    平均偏度："+printable(skew["mean"]), x+30, 254, cw-60, 25, 13, 500, navy)
+		qualitySecondary := "平均单元质量：" + metricText(numberAt(eq, "mean")) + "（越高越好）"
+		if oq["min"] != nil {
+			qualitySecondary = "最小正交质量：" + printable(oq["min"]) + "    " + qualitySecondary
 		}
-		if a.last.Phase == "warning_refine_publish" {
-			summaries = append(summaries, "局部球形 Sizing 已发布："+printable(a.lastSummary["sizing_count"]))
-			summaries = append(summaries, "未清网格；未执行 GenerateMesh，请在 Meshing 审核")
-		}
-		if a.last.Phase == "mark_failed" || a.last.Phase == "mark_warning" || a.last.Phase == "mark_high_skew" {
-			summaries = append(summaries, "Worksheet："+printable(a.lastSummary["message"]))
-		}
-		quality := asMap(a.lastSummary["quality"])
-		qualityData := a.lastSummary
-		if len(quality) == 0 && len(asMap(a.qualitySummary["quality"])) > 0 {
-			quality = asMap(a.qualitySummary["quality"])
-			qualityData = a.qualitySummary
-			stamp := a.qualityCheckedAt.Format("15:04:05")
-			if a.qualityStale {
-				summaries = append(summaries, "历史质量（可能已失效，"+stamp+"）：需要重新检查")
-			} else {
-				summaries = append(summaries, "上次实测质量（"+stamp+"）：非当前操作结果")
-			}
-		}
-		if len(quality) > 0 {
-			summaries = append(summaries, "单元数："+printable(qualityData["mesh_elements"]))
-			summaries = append(summaries, "最大偏度："+printable(asMap(quality["skewness"])["max"]))
-			if worksheet := asMap(qualityData["worksheet_diagnostics"]); len(worksheet) > 0 {
-				haveCounts := false
-				if metrics, ok := worksheet["metrics"].([]any); ok {
-					for _, raw := range metrics {
-						m := asMap(raw)
-						if m["failed_count"] != nil && m["warning_count"] != nil {
-							summaries = append(summaries, fmt.Sprintf("Worksheet %s：失败 %s / 警告 %s", printable(m["name"]), printable(m["failed_count"]), printable(m["warning_count"])))
-							haveCounts = true
-						}
-					}
-				}
-				if !haveCounts {
-					summaries = append(summaries, "Worksheet：当前未返回可核验的失败/警告计数")
-				}
-			}
-			if oq := asMap(quality["orthogonal_quality"]); len(oq) > 0 {
-				summaries = append(summaries, "最小正交质量（ACT 实测）："+printable(oq["min"]))
-			} else {
-				d := asMap(quality["orthogonal_quality_diagnostic"])
-				switch printable(d["status"]) {
-				case "enum_not_exposed":
-					summaries = append(summaries, "最小正交质量：当前 ACT 枚举未开放读取；不是 0，需 Meshing/Fluent 核验")
-				case "metric_read_failed":
-					summaries = append(summaries, "最小正交质量：ACT 调用失败；原因见详细报告")
-				default:
-					summaries = append(summaries, "最小正交质量：未取得有效实测值；不能用偏度换算")
-				}
-			}
-			summaries = append(summaries, "质量判断："+qualityGateText(printable(qualityData["quality_gate"])))
-		} else if a.last.Phase != "quality_check" && a.last.Phase != "diagnose" {
-			summaries = append(summaries, "本次是命名或设置任务，未测量网格质量。")
-			summaries = append(summaries, "点击下方「只读检查网格质量」获取当前网格实测数据。")
+		textAt(dc, qualitySecondary, x+30, 284, cw-60, 23, 12, 450, slate)
+		textAt(dc, "数据来源："+shorten(printable(a.qualitySummary["quality_source"]), 75)+"；Element Quality："+shorten(printable(eq["source"]), 45), x+30, 307, cw-60, 20, 11, 400, slate)
+		if a.qualityStale {
+			textAt(dc, "该结果可能不再对应当前网格；请重新更新质量数据后再比较。", x+30, 331, cw-60, 23, 12, 600, warningcolor)
 		} else {
-			summaries = append(summaries, "当前无可测量网格，或质量接口未返回数据。")
+			textAt(dc, "质量数据已保存为独立任务回执，可在「质量分析」中与历史版本比较。", x+30, 331, cw-60, 23, 12, 450, green)
 		}
-		if len(quality) == 0 && (a.last.Phase == "publish_existing_sizing" || a.last.Phase == "prepare") {
-			summaries = append(summaries, "已发布局部 Sizing："+printable(a.lastSummary["created_sizing_count"]))
-		}
-		if len(summaries) == 0 {
-			summaries = append(summaries, "扫描结果已生成："+a.bodyFace())
-		}
-		for i, v := range summaries {
-			if i >= 6 {
-				break
+		if worksheet := asMap(a.qualitySummary["worksheet_diagnostics"]); len(worksheet) > 0 {
+			if metrics, ok := worksheet["metrics"].([]any); ok {
+				for i, raw := range metrics {
+					if i >= 2 {
+						break
+					}
+					m := asMap(raw)
+					line := printable(m["name"]) + "："
+					if m["failed_count"] != nil && m["warning_count"] != nil {
+						line += "失败 " + printable(m["failed_count"]) + " / 警告 " + printable(m["warning_count"])
+					} else {
+						line += "接口未返回可核验计数"
+					}
+					textAt(dc, line, x+30, 364+i*23, cw-60, 21, 12, 450, slate)
+				}
 			}
-			textAt(dc, shorten(v, 102), x+32, 254+i*29, cw-64, 25, 13, 450, navy)
 		}
 	}
-	rule(dc, x+30, 435, x+cw-30, 435, lineclr)
-	textAt(dc, "01  检查网格并标记目标单元", x+30, 449, cw-60, 24, 15, 650, navy)
-	textAt(dc, "偏度范围", x+211, 485, 82, 30, 12, 450, slate)
-	textAt(dc, "至", x+371, 485, 20, 30, 12, 450, slate)
-	if !validSkewRange(read(a.ctl("skewlow")), read(a.ctl("skewhigh"))) {
-		textAt(dc, "请输入有效范围：0 ≤ 下限 < 上限 ≤ 1", x+211, 518, cw-230, 17, 11, 500, warningcolor)
+	rule(dc, x+30, 421, x+cw-30, 421, lineclr)
+	textAt(dc, "01  目标单元标记", x+30, 435, cw-60, 24, 15, 650, navy)
+	textAt(dc, "选择一种规则，再执行一次标记；底层仍调用对应的 ANSYS 原生接口。", x+30, 461, cw-60, 20, 12, 450, slate)
+	if int(send(a.ctl("markrule"), CB_GETCURSEL, 0, 0)) >= 2 {
+		metricLabel := "偏度范围"
+		if int(send(a.ctl("markrule"), CB_GETCURSEL, 0, 0)) == 3 {
+			metricLabel = "单元质量区间"
+		}
+		textAt(dc, metricLabel, x+440, 461, 78, 18, 12, 450, slate)
+		textAt(dc, "至", x+515, 485, 15, 30, 12, 450, slate)
+		if !validSkewRange(read(a.ctl("skewlow")), read(a.ctl("skewhigh"))) {
+			textAt(dc, "范围必须满足 0 ≤ 下限 < 上限 ≤ 1", x+440, 518, cw-470, 17, 11, 500, warningcolor)
+		} else if a.sharedDataStatus().GeometryState != SharedStateReady {
+			textAt(dc, "标记前请在「局部细化」执行当前 Mesh 完整几何扫描", x+440, 518, cw-470, 17, 11, 500, warningcolor)
+		}
 	}
-	textAt(dc, "02  预览局部细化方案并确认发布", x+30, 535, cw-60, 25, 15, 650, navy)
+	textAt(dc, "02  局部优化方案", x+30, 535, cw-60, 25, 15, 650, navy)
+	textAt(dc, "生成方案后查看影响范围，再进入候选审核页；发布与生成网格仍是两个独立步骤。", x+30, 562, cw-60, 24, 12, 450, slate)
 	rule(dc, x+30, 607, x+cw-30, 607, lineclr)
-	textAt(dc, "辅助工具", x+30, 612, cw-60, 17, 11, 450, slate)
+	textAt(dc, "风险说明：Worksheet 计数沿用 ANSYS 当前阈值；标记结果不代表局部优化已生效。", x+30, 620, cw-60, 24, 11, 450, warningcolor)
 }
 func (a *state) drawSettings(dc uintptr, x, cw int) {
-	textAt(dc, "更多设置", x+16, 83, cw-32, 43, 25, 700, navy)
-	textAt(dc, "存储路径可修改，当前 Meshing 及工程不会因修改软件路径而改变。", x+16, 130, cw-32, 26, 13, 400, slate)
+	textAt(dc, "设置与维护", x+16, 83, cw-32, 43, 25, 700, navy)
+	textAt(dc, "管理导出、数据存储和低频高级维护；日常任务状态统一在顶部任务中心查看。", x+16, 130, cw-32, 26, 13, 400, slate)
 	solid(dc, x, 183, cw, 242, white, 20)
 	textAt(dc, "导出 Fluent 网格（选填）", x+30, 202, cw-60, 31, 18, 650, navy)
 	textAt(dc, "请填写英文绝对 .msh 路径；已存在的文件不会被覆盖。", x+30, 255, cw-60, 26, 13, 450, slate)
 	textAt(dc, "导出不是 Fluent 质量验证；边界命名和网格质量必须人工复核。", x+342, 372, cw-377, 31, 12, 500, navy)
 	solid(dc, x, 444, cw, 211, white, 20)
-	textAt(dc, "工作数据目录（任务、日志、命名勾选与质量报告）", x+30, 454, cw-60, 30, 17, 650, navy)
-	textAt(dc, "当前："+shorten(a.ws.Dir, 100), x+30, 486, cw-60, 27, 12, 450, slate)
-	textAt(dc, "可迁移至 D/E 盘；核对后切换，旧文件保留。迁移期间不能执行任何任务。", x+270, 529, cw-300, 29, 12, 450, slate)
-	textAt(dc, "异常占用必须先核验 Meshing 后台状态，不能直接清锁。", x+530, 605, cw-560, 23, 11, 450, warningcolor)
+	textAt(dc, "数据存储", x+30, 454, 230, 28, 17, 650, navy)
+	textAt(dc, "当前："+shorten(a.ws.Dir, 36), x+30, 486, cw/2-45, 24, 12, 450, slate)
+	textAt(dc, "迁移前逐文件校验；旧目录保留，不覆盖已有目标。", x+30, 558, cw/2-45, 24, 11, 450, slate)
+	textAt(dc, "高级维护", x+cw/2+10, 454, cw/2-40, 28, 17, 650, navy)
+	textAt(dc, "仅处理未绑定 Sizing 的旧版辅助命名，不改动人工命名。", x+cw/2+10, 486, cw/2-40, 32, 11, 450, slate)
+	textAt(dc, "软件信息", x+cw/2+10, 568, 120, 20, 12, 650, slate)
+	textAt(dc, "AutoMesh R8.1 RC · 保留连续 Sizing 安全内核", x+cw/2+10, 590, cw/2-40, 20, 11, 500, navy)
+	textAt(dc, "Workbench 2024 R2 桥接 · 当前连接状态见顶部", x+cw/2+10, 612, cw/2-40, 18, 10, 400, slate)
+	textAt(dc, "异常占用：先核验 Meshing 后台任务已退出，再使用双重确认解除。", x+30, 632, cw/2-45, 18, 10, 450, warningcolor)
 }
 func (a *state) busySet(v bool) {
 	a.mu.Lock()
@@ -1254,7 +1442,7 @@ func (a *state) busySet(v bool) {
 		a.stopRequested = false
 	}
 	a.mu.Unlock()
-	visible(a.ctl("taskstop"), v || a.hasPendingStopTarget())
+	a.syncTaskDrawerControls()
 	a.updateActionStates()
 	refresh()
 }
@@ -1425,7 +1613,7 @@ func (a *state) taskRun(phase, system string, snap *Snapshot, plan *Plan) (Resul
 	if phase == "auto_onepass" || phase == "auto" || phase == "export" {
 		path = a.activeExport
 	}
-	job, err := a.ws.Submit(phase, snap, plan, path, false, phase == "export")
+	job, err := a.ws.SubmitForSystem(system, phase, snap, plan, path, false, phase == "export")
 	if err != nil {
 		return Result{}, err
 	}
@@ -1436,6 +1624,12 @@ func (a *state) taskRun(phase, system string, snap *Snapshot, plan *Plan) (Resul
 			return Result{}, e
 		}
 		return Result{JobID: job.JobID, Phase: phase, Status: "unconfirmed"}, fmt.Errorf("已请求停止任务 %s；远端尚未确认终止。保留任务锁，允许只读检查，禁止重复提交", job.JobID[:8])
+	}
+	// Persist the transition before the first Workbench dispatch call. If the
+	// local lifecycle record cannot be saved, do not send the ACT command.
+	if err := a.ws.MarkTaskDispatching(job); err != nil {
+		_ = a.ws.removeTaskLeaseIfOwned(job.JobID) // No remote dispatch has started.
+		return Result{}, fmt.Errorf("无法保存任务投递状态；尚未向 Workbench 发送命令：%w", err)
 	}
 	a.postProgress("I|正在提交 ANSYS 任务|任务已锁定，将发送至当前 Meshing：" + phase)
 	// Workbench SendCommand may BLOCK until the Meshing command ends. Therefore
@@ -1568,8 +1762,8 @@ func (a *state) run(kind string) {
 	// Do not block read-only quality inspection, warning marking or preview
 	// because the unrelated text field on Home is currently empty or invalid.
 	if taskRequiresReferenceSize(kind) && (err != nil || math.IsNaN(base) || math.IsInf(base, 0) || base < 0.5 || base > 500) {
-		a.switchPage(0)
-		alert("此操作需要有效的参考尺寸（0.5–500 mm）。请在概览页修改后重试。")
+		a.switchPage(2)
+		alert("此操作需要有效的参考尺寸（0.5–500 mm）。请在局部细化页修改后重试。")
 		return
 	}
 	if !taskRequiresReferenceSize(kind) && (err != nil || math.IsNaN(base) || math.IsInf(base, 0)) {
@@ -1578,7 +1772,7 @@ func (a *state) run(kind string) {
 	if kind == "export" {
 		path := strings.TrimSpace(read(a.ctl("export")))
 		if path == "" || !strings.EqualFold(filepath.Ext(path), ".msh") || !filepath.IsAbs(path) || !asciiPath(path) {
-			a.switchPage(4)
+			a.switchPage(5)
 			alert("请填写英文绝对 .msh 导出路径，例如 D:\\Mesh\\result.msh")
 			return
 		}
@@ -1587,7 +1781,7 @@ func (a *state) run(kind string) {
 			return
 		}
 		if a.snapshot == nil || a.scannedSystem != a.systems[sel] {
-			alert("请先在当前系统完成只读扫描并确认已生成网格，再执行导出")
+			alert("请先在局部细化页完成完整几何扫描并确认已生成网格，再执行导出")
 			return
 		}
 		if !confirm("将从当前 Meshing 单独导出 Fluent .msh。\n程序会重新检查 inlet/outlet 的 Send to Solver 与初步质量；\n当 OQ 等指标不可用时，导出文件仅供 Fluent 再验证，不代表网格合格。\n拒绝覆盖已有文件。确定继续？") {
@@ -1608,12 +1802,12 @@ func (a *state) run(kind string) {
 			return
 		}
 	}
-	if kind == "mark_high_skew" {
+	if kind == "mark_high_skew" || kind == "mark_low_element_quality" {
 		if a.snapshot == nil || a.scannedSystem != a.systems[sel] {
-			alert("请先对当前 Meshing 完成只读扫描，再按偏度区间标记单元。")
+			alert("请先在局部细化页完成完整几何扫描，再按真实网格质量区间标记单元。")
 			return
 		}
-		if !confirm("将按自定义偏度上下限，在当前网格创建 Mesh Element 选择组；不调整原质量警告阈值、不清网格、不发布 Sizing。\n请确认输入范围并继续？") {
+		if !confirm("将按自定义质量上下限，在当前网格创建原生 Mesh Element 选择组；不调整原质量警告阈值、不清网格、不发布 Sizing。\n低 Element Quality 可能与几何/网格方法有关，后续 Sizing 必须人工审核。确认继续？") {
 			return
 		}
 	}
@@ -1633,7 +1827,7 @@ func (a *state) run(kind string) {
 			alert("请先手动勾选并审核候选：" + selectionErr.Error())
 			return
 		}
-		msg := fmt.Sprintf("方案 %s：全部候选 %d 处，本次明确勾选 %d 处，预计累计预算代理 %d/120000。\n\n将仅为本次所选区域创建可编辑 Sphere of Influence Sizing。每批最多 6 个；其他区域保留待处理。\n\n片间净空尚未自动核验：你必须已在影响域详情逐项核查。\n不会清除或重新生成网格。\n\n确认已保存工程，授权发布这 %d 个区域？", proposal.PlanID, len(proposal.Clusters), len(selected.CandidateIDs), selected.SelectedBudget, len(selected.CandidateIDs))
+		msg := fmt.Sprintf("方案 %s：全部候选 %d 处，本次明确勾选 %d 处，预计累计预算代理 %d（建议预警值120000，超限已单独确认）。\n\n将仅为本次所选区域创建可编辑 Sphere of Influence Sizing。每批最多 6 个；其他区域保留待处理。\n\n片间净空尚未自动核验：你必须已在影响域详情逐项核查。\n不会清除或重新生成网格。\n\n确认已保存工程，授权发布这 %d 个区域？", proposal.PlanID, len(proposal.Clusters), len(selected.CandidateIDs), selected.SelectedBudget, len(selected.CandidateIDs))
 		if !confirm(msg) {
 			return
 		}
@@ -1641,7 +1835,7 @@ func (a *state) run(kind string) {
 	if kind == "publish_existing_sizing" {
 		if a.snapshot == nil || a.scannedSystem != a.systems[sel] {
 			a.switchPage(0)
-			alert("先点击「只读扫描」读取当前 Meshing 的 Named Selection，再返回本页设置尺寸。")
+			alert("先在局部细化页点击「完整几何扫描」读取当前 Meshing 的 Named Selection。")
 			return
 		}
 		if len(a.selectedNamed) > 40 {
@@ -1664,12 +1858,12 @@ func (a *state) run(kind string) {
 	if kind == "prepare" || kind == "publish_names" {
 		if a.scannedBaseMM != base {
 			a.switchPage(0)
-			alert("参考尺寸在扫描后发生变化。请先重新执行只读扫描，以刷新所有局部细化建议。")
+			alert("参考尺寸在扫描后发生变化。请重新执行完整几何扫描，以刷新局部细化建议。")
 			return
 		}
 		if a.snapshot == nil || a.scannedSystem != a.systems[sel] || len(a.proposals) == 0 {
 			a.switchPage(0)
-			alert("必须先执行当前网格系统的只读扫描并审核局部细化方案；本版本不允许绕过审核直接生成。")
+			alert("必须先执行当前网格系统的完整几何扫描并审核局部细化方案；本版本不允许绕过审核直接生成。")
 			return
 		}
 		if kind == "publish_names" {
@@ -1699,15 +1893,19 @@ func (a *state) run(kind string) {
 	}
 	system := a.systems[sel]
 	var proposal *Plan
-	if kind == "mark_high_skew" {
+	if kind == "mark_high_skew" || kind == "mark_low_element_quality" {
 		minV, e1 := strconv.ParseFloat(strings.TrimSpace(read(a.ctl("skewlow"))), 64)
 		maxV, e2 := strconv.ParseFloat(strings.TrimSpace(read(a.ctl("skewhigh"))), 64)
 		if e1 != nil || e2 != nil || math.IsNaN(minV) || math.IsNaN(maxV) || math.IsInf(minV, 0) || math.IsInf(maxV, 0) || minV < 0 || maxV > 1 || minV >= maxV {
-			alert("偏度范围错误：请输入 0 ≤ 下限 < 上限 ≤ 1，例如 0.90 和 1.00")
+			alert("质量指标范围错误：请输入 0 ≤ 下限 < 上限 ≤ 1")
 			return
 		}
-		proposal = &Plan{SkewMin: minV, SkewMax: maxV}
-		_ = writeJSON(a.ws.path("skew_range_settings.json"), map[string]float64{"low": minV, "high": maxV})
+		if kind == "mark_low_element_quality" {
+			proposal = &Plan{QualityMin: minV, QualityMax: maxV}
+		} else {
+			proposal = &Plan{SkewMin: minV, SkewMax: maxV}
+			_ = writeJSON(a.ws.path("skew_range_settings.json"), map[string]float64{"low": minV, "high": maxV})
+		}
 	}
 	if kind == "publish_existing_sizing" {
 		raw := strings.TrimSpace(printable(a.snapshot.Mesh["Elements"]))
@@ -1744,7 +1942,7 @@ func (a *state) run(kind string) {
 			existingMesh = n > 0
 			if existingMesh {
 				if send(a.ctl("global"), BM_GETCHECK, 0, 0) == 1 {
-					alert("已有网格时不能覆盖全局尺寸，请在概览页关闭该选项。")
+					alert("已有网格时不能覆盖全局尺寸，请在局部细化页关闭该选项。")
 					return
 				}
 				if !confirm("当前 Meshing 已经生成网格。发布局部 Sizing 可能使 ANSYS 现有网格失效。\n软件不会自动清网格，也不会自动重划；请先保存你的工程并确认可以接受风险。\n仍然继续吗？") {
@@ -1832,7 +2030,17 @@ func (a *state) run(kind string) {
 		}()
 		var result Result
 		var err error
-		if kind == "publish_existing_sizing" {
+		if kind == "sync_status" {
+			a.postProgress("I|同步工程信息|仅读取工程、网格规模、命名与现有控制；不扫描完整面几何")
+			result, err = a.taskRun("sync_status", system, nil, nil)
+		} else if (kind == "quality_check" || kind == "quality_check_deep" || kind == "diagnose") && (a.snapshot == nil || a.scannedSystem != system) {
+			a.postProgress("I|读取当前网格质量|无可复用几何快照；仅执行当前网格只读质量读取")
+			result, err = a.taskRun(kind, system, nil, nil)
+		} else if kind == "export" || kind == "rename_auxiliary" {
+			// Both operations already require a verified snapshot at the UI gate.
+			// Do not dispatch another full inspect before their native checks.
+			result, err = a.taskRun(kind, system, a.snapshot, nil)
+		} else if kind == "publish_existing_sizing" {
 			a.postProgress("I|绑定现有命名|仅为勾选的 Named Selection 创建 Sizing")
 			result, err = a.taskRun("publish_existing_sizing", system, a.snapshot, proposal)
 		} else if kind == "prepare" || kind == "publish_names" {
@@ -1846,9 +2054,9 @@ func (a *state) run(kind string) {
 		} else if kind == "generate_reviewed" {
 			a.postProgress("校验已审核命名组和尺寸，准备生成网格…")
 			result, err = a.taskRun("generate_reviewed", system, a.snapshot, nil)
-		} else if (kind == "quality_check" || kind == "diagnose" || kind == "mark_failed" || kind == "mark_warning" || kind == "mark_high_skew" || kind == "warning_refine_preview" || kind == "warning_refine_publish") && a.snapshot != nil && a.scannedSystem == system {
+		} else if (kind == "quality_check" || kind == "quality_check_deep" || kind == "diagnose" || kind == "mark_failed" || kind == "mark_warning" || kind == "mark_high_skew" || kind == "mark_low_element_quality" || kind == "warning_refine_preview" || kind == "warning_refine_publish") && a.snapshot != nil && a.scannedSystem == system {
 			a.postProgress("I|核验当前网格|复用已扫描几何；将由 ACT 再验证会话与模型")
-			if kind == "mark_high_skew" {
+			if kind == "mark_high_skew" || kind == "mark_low_element_quality" {
 				result, err = a.taskRun(kind, system, a.snapshot, proposal)
 			} else {
 				result, err = a.taskRun(kind, system, a.snapshot, nil)
@@ -1860,6 +2068,21 @@ func (a *state) run(kind string) {
 				if e != nil {
 					err = e
 				} else {
+					// The implicit inspect succeeded even if the next task
+					// subsequently fails. Reuse this genuine scan on later pages.
+					a.mu.Lock()
+					a.snapshot = &snap
+					a.scannedSystem = system
+					a.scannedBaseMM = base
+					a.shared.geometryScannedAt = time.Now()
+					a.shared.geometryStale = false
+					a.shared.geometryError = ""
+					if a.qualityResult != nil && (a.qualityFingerprint != "" && a.qualityFingerprint != snap.Fingerprint ||
+						a.qualityMeshSignature != "" && snapshotMeshSignature(&snap) != "" && a.qualityMeshSignature != snapshotMeshSignature(&snap) ||
+						a.qualityQuickGeometrySignature != "" && snap.GeometryQuickSignature != "" && a.qualityQuickGeometrySignature != snap.GeometryQuickSignature) {
+						a.qualityStale = true
+					}
+					a.mu.Unlock()
 					p := &Plan{GlobalMM: base, ApplyGlobal: a.activeApplyGlobal}
 					result, err = a.taskRun(kind, system, &snap, p)
 				}
@@ -1870,7 +2093,7 @@ func (a *state) run(kind string) {
 				err = fmt.Errorf("Meshing 已返回预览，但诊断文件尚未安全保存：%w", e)
 			}
 		}
-		if err == nil && (kind == "mark_warning" || kind == "mark_high_skew" || kind == "generate_reviewed" || kind == "prepare" || kind == "publish_existing_sizing") {
+		if err == nil && (kind == "mark_warning" || kind == "mark_high_skew" || kind == "mark_low_element_quality" || kind == "generate_reviewed" || kind == "prepare" || kind == "publish_existing_sizing") {
 			// Previous preview might no longer describe the active mesh controls.
 			_ = a.ws.InvalidateWarningPreview()
 		}
@@ -1901,6 +2124,8 @@ func (a *state) run(kind string) {
 				a.preparedSystem = ""
 				a.scannedSystem = ""
 				a.snapshot = nil // newly published names make prior cached scopes stale
+				a.shared.geometryStale = true
+				a.shared.geometryError = ""
 				a.mu.Unlock()
 			}
 			if kind == "prepare" || kind == "publish_existing_sizing" {
@@ -1908,10 +2133,32 @@ func (a *state) run(kind string) {
 				a.preparedSystem = system
 				a.mu.Unlock()
 			}
-			if kind != "publish_names" && kind != "rename_auxiliary" {
+			if kind != "publish_names" && kind != "rename_auxiliary" && kind != "sync_status" {
 				if snap, e := a.ws.LoadSnapshot(); e == nil {
 					a.mu.Lock()
 					a.snapshot = &snap
+					if kind == "inspect" {
+						a.shared.geometryScannedAt = time.Now()
+						a.shared.geometryStale = false
+						a.shared.geometryError = ""
+					}
+					if a.qualityResult != nil {
+						meshSignature := snapshotMeshSignature(&snap)
+						quickGeometry := snap.GeometryQuickSignature
+						if a.qualityFingerprint != "" && a.qualityFingerprint != snap.Fingerprint {
+							a.qualityStale = true
+						} else if a.qualityMeshSignature != "" && meshSignature != "" && a.qualityMeshSignature != meshSignature {
+							a.qualityStale = true
+						} else if a.qualityQuickGeometrySignature != "" && quickGeometry != "" && a.qualityQuickGeometrySignature != quickGeometry {
+							a.qualityStale = true
+						}
+					}
+					a.mu.Unlock()
+				} else if kind == "inspect" {
+					a.mu.Lock()
+					a.scannedSystem = ""
+					a.shared.geometryStale = true
+					a.shared.geometryError = "完整几何扫描已返回，但本地 Snapshot 读取失败：" + e.Error()
 					a.mu.Unlock()
 				}
 			}
@@ -1922,23 +2169,63 @@ func (a *state) run(kind string) {
 		} else {
 			a.errorText = ""
 		}
+		if err != nil {
+			switch kind {
+			case "sync_status":
+				a.shared.engineeringError = err.Error()
+				a.shared.engineeringStale = true
+			case "inspect":
+				a.shared.geometryError = err.Error()
+				a.shared.geometryStale = true
+			case "quality_check", "quality_check_deep":
+				a.shared.qualityError = err.Error()
+				a.qualityStale = true
+			}
+		}
+		if err == nil {
+			switch kind {
+			case "publish_names", "rename_auxiliary", "prepare", "publish_existing_sizing", "warning_refine_publish", "generate_reviewed", "auto_onepass", "auto":
+				a.shared.engineeringStale = true
+			}
+		}
 		if result.JobID != "" {
 			a.last = &result
 			var sm map[string]any
 			_ = json.Unmarshal(result.Summary, &sm)
 			a.lastSummary = sm
+			if result.Phase == "sync_status" {
+				a.engineeringSummary = sm
+				a.engineeringSyncedAt = time.Now()
+				a.shared.engineeringSystem = system
+				a.shared.engineeringStale = false
+				a.shared.engineeringError = ""
+				if a.qualityResult != nil {
+					newMesh := printable(sm["mesh_signature"])
+					newGeometry := printable(sm["geometry_quick_signature"])
+					newProject := printable(sm["project"])
+					if (a.qualityMeshSignature != "" && newMesh != "—" && a.qualityMeshSignature != newMesh) ||
+						(a.qualityQuickGeometrySignature != "" && newGeometry != "—" && a.qualityQuickGeometrySignature != newGeometry) ||
+						(a.qualityProject != "" && newProject != "—" && !strings.EqualFold(filepath.Clean(a.qualityProject), filepath.Clean(newProject))) {
+						a.qualityStale = true
+					}
+				}
+			}
 			if result.Phase == "quality_check" || result.Phase == "diagnose" || result.Phase == "generate_reviewed" || result.Phase == "auto_onepass" || result.Phase == "auto" {
-				if len(asMap(sm["quality"])) > 0 {
+				if result.Status == "ok" && (len(asMap(sm["quality"])) > 0 ||
+					(printable(sm["quality_status"]) == "not_measured" && printable(sm["quality_gate"]) == "no_mesh")) {
 					cpy := result
 					a.qualityResult = &cpy
 					a.qualitySummary = sm
 					a.qualityCheckedAt = time.Now()
 					a.qualityStale = false
-					if a.snapshot != nil {
-						a.qualityFingerprint = a.snapshot.Fingerprint
-					}
+					a.shared.qualitySystem = system
+					a.shared.qualityError = ""
+					a.qualityFingerprint = printable(sm["geometry_fingerprint"])
+					a.qualityMeshSignature = printable(sm["mesh_signature"])
+					a.qualityProject = printable(sm["project"])
+					a.qualityQuickGeometrySignature = printable(sm["geometry_quick_signature"])
 				}
-			} else if result.Phase != "inspect" && result.Phase != "mark_failed" && result.Phase != "mark_warning" && result.Phase != "mark_high_skew" && result.Phase != "warning_refine_preview" && result.Phase != "publish_names" {
+			} else if result.Phase != "inspect" && result.Phase != "sync_status" && result.Phase != "mark_failed" && result.Phase != "mark_warning" && result.Phase != "mark_high_skew" && result.Phase != "mark_low_element_quality" && result.Phase != "warning_refine_preview" && result.Phase != "publish_names" && result.Phase != "rename_auxiliary" {
 				a.qualityStale = true
 			}
 		}
@@ -2163,7 +2450,7 @@ func (a *state) finish(connecting bool) {
 	a.mu.Unlock()
 	a.busySet(false)
 	a.activePhase = ""
-	if !connecting && a.last != nil && e == "" {
+	if !connecting && a.last != nil && e == "" && (a.last.Phase == "quality_check" || a.last.Phase == "diagnose" || a.last.Phase == "generate_reviewed" || a.last.Phase == "auto_onepass" || a.last.Phase == "auto") {
 		if _, reportErr := a.ws.SaveHTMLReport(a.snapshot, *a.last); reportErr != nil && e == "" {
 			e = "无法写入最新报告：" + reportErr.Error()
 		}
@@ -2179,6 +2466,7 @@ func (a *state) finish(connecting bool) {
 	if e != "" {
 		if connecting {
 			a.connected = false
+			a.shared.connectionError = e
 			set(a.ctl("auto"), "连接 Workbench")
 		}
 		a.progress = "连接失败，可人工重试"
@@ -2202,6 +2490,12 @@ func (a *state) finish(connecting bool) {
 		a.qualitySummary = nil
 		a.qualityStale = true
 		a.qualityFingerprint = ""
+		a.qualityMeshSignature = ""
+		a.qualityProject = ""
+		a.qualityQuickGeometrySignature = ""
+		a.engineeringSummary = nil
+		a.engineeringSyncedAt = time.Time{}
+		a.shared = sharedDataRuntime{}
 		a.namedRows = nil
 		a.namedVisible = nil
 		a.selectedNamed = nil
@@ -2214,10 +2508,19 @@ func (a *state) finish(connecting bool) {
 		if len(a.systems) == 1 {
 			send(a.ctl("systems"), CB_SETCURSEL, 0, 0)
 		}
-		a.progress = "已连接 Workbench，可先只读扫描"
+		a.shared.lastSelectedSystem = a.selectedMeshSystem()
+		a.progress = "已连接 Workbench，可同步工程并检测质量"
 		a.message(fmt.Sprintf("已找到 %d 个网格系统，打开 Meshing 后勾选确认并扫描", len(a.systems)))
 		a.switchPage(0)
 		return
+	}
+	if a.last != nil && (a.last.Phase == "quality_check" || a.last.Phase == "diagnose" || a.last.Phase == "generate_reviewed" || a.last.Phase == "auto_onepass" || a.last.Phase == "auto") {
+		_ = a.loadQualityHistory()
+	}
+	if a.taskCenterOpen {
+		a.taskCenterStatus = a.ws.taskStatus()
+		a.taskCenterStatusUpdatedAt = time.Now()
+		a.refreshTaskCenterText()
 	}
 	if a.last != nil {
 		switch a.last.Phase {
@@ -2234,7 +2537,7 @@ func (a *state) finish(connecting bool) {
 			if a.snapshot != nil {
 				for _, n := range a.snapshot.Named {
 					name := strings.TrimSpace(n.Name)
-					if name == "" || strings.EqualFold(name, "inlet") || strings.EqualFold(name, "outlet") || len(n.IDs) == 0 {
+					if name == "" || len(n.IDs) == 0 {
 						continue
 					}
 					a.namedRows = append(a.namedRows, n)
@@ -2285,6 +2588,24 @@ func (a *state) finish(connecting bool) {
 				for n, size := range a.selectedNamed {
 					customSizes[n] = size
 				}
+				// Preserve native sizes of existing manually named inlet/outlet
+				// controls when they are first enabled. Never overwrite an
+				// explicit in-memory choice or saved active/paused preference.
+				for _, n := range a.namedRows {
+					if !strings.EqualFold(n.Name, "inlet") && !strings.EqualFold(n.Name, "outlet") {
+						continue
+					}
+					if _, active := a.selectedNamed[n.Name]; active {
+						continue
+					}
+					if _, paused := a.pausedNamedSizes[n.Name]; paused {
+						continue
+					}
+					if mm, ok := existingNamedSizingSize(a.snapshot, n); ok {
+						a.pausedNamedSizes[n.Name] = mm
+						customSizes[n.Name] = mm
+					}
+				}
 				a.sizeBuckets = groupAdvice(a.advice, customSizes)
 			}
 			a.redrawNamedRows()
@@ -2321,8 +2642,8 @@ func (a *state) finish(connecting bool) {
 				}
 				send(a.ctl("fine"+def.key), BM_SETCHECK, 1, 0)
 			}
-			a.progress = "只读扫描已完成 · 请审核局部细化"
-			a.message(fmt.Sprintf("已读取 %d 个现有命名组。只给勾选并设置尺寸的组创建 Sizing。", len(a.namedRows)))
+			a.progress = "完整几何扫描已完成 · 请审核局部细化"
+			a.message(fmt.Sprintf("已读取 %d 个现有命名组。仅对明确启用且经审核的命名组发布 Sizing（包含 inlet/outlet）。", len(a.namedRows)))
 			a.switchPage(2)
 			return
 		case "publish_names":
@@ -2381,7 +2702,7 @@ func (a *state) finish(connecting bool) {
 			// controls were added. The live control inventory is refreshed by ACT.
 			a.switchPage(3)
 			return
-		case "mark_failed", "mark_warning", "mark_high_skew":
+		case "mark_failed", "mark_warning", "mark_high_skew", "mark_low_element_quality":
 			status := printable(a.report()["status"])
 			message := printable(a.report()["message"])
 			groups := a.report()["created_groups"]
@@ -2558,46 +2879,51 @@ func (a *state) persistNamedChoices() {
 
 func (a *state) syncGroupEditor() {
 	idx := int(send(a.ctl("finegroups"), LB_GETCURSEL, 0, 0))
+	set(a.ctl("finebulkmm"), "") // legacy editor retained hidden for compatibility only
 	if idx < 0 || idx >= len(a.namedVisible) {
 		set(a.ctl("finegroupmm"), "")
-		set(a.ctl("finebulkmm"), "")
+		set(a.ctl("finegroupsave"), "应用尺寸")
+		set(a.ctl("finegroupactive"), "启用所选命名或整组")
 		send(a.ctl("finegroupactive"), BM_SETCHECK, 0, 0)
+		refresh()
 		return
 	}
 	selected := a.namedVisible[idx]
-	if bucket, ok := a.selectedBucket(); ok {
-		set(a.ctl("finebulkmm"), strconv.FormatFloat(a.sizeBuckets[bucket].MM, 'f', -1, 64))
-	}
-	if i, ok := parseBucketMarker(selected.Name); ok && i < len(a.sizeBuckets) {
+	if i, isGroup := parseBucketMarker(selected.Name); isGroup && i < len(a.sizeBuckets) {
 		g := a.sizeBuckets[i]
 		n := bucketEnabledCount(a.selectedNamed, g.Members)
+		set(a.ctl("finegroupmm"), strconv.FormatFloat(g.MM, 'f', -1, 64))
+		set(a.ctl("finegroupsave"), "应用整组尺寸")
 		if n == len(g.Members) && n > 0 {
 			send(a.ctl("finegroupactive"), BM_SETCHECK, 1, 0)
 		} else {
 			send(a.ctl("finegroupactive"), BM_SETCHECK, 0, 0)
 		}
 		set(a.ctl("finegroupactive"), fmt.Sprintf("启用整组（%d/%d）", n, len(g.Members)))
-		set(a.ctl("finegroupmm"), "")
+		refresh()
+		return
+	}
+	set(a.ctl("finegroupsave"), "应用单项尺寸")
+	set(a.ctl("finegroupactive"), "启用此命名组")
+	if mm, ok := a.selectedNamed[selected.Name]; ok {
+		set(a.ctl("finegroupmm"), strconv.FormatFloat(mm, 'f', -1, 64))
+		send(a.ctl("finegroupactive"), BM_SETCHECK, 1, 0)
 	} else {
-		set(a.ctl("finegroupactive"), "启用此命名组")
-		if mm, ok := a.selectedNamed[selected.Name]; ok {
-			set(a.ctl("finegroupmm"), strconv.FormatFloat(mm, 'f', -1, 64))
-			send(a.ctl("finegroupactive"), BM_SETCHECK, 1, 0)
-		} else {
-			suggested := 0.0
+		suggested := a.pausedNamedSizes[selected.Name]
+		if suggested <= 0 {
 			for _, ad := range a.advice {
 				if ad.Name == selected.Name {
 					suggested = ad.MM
 					break
 				}
 			}
-			if suggested > 0 {
-				set(a.ctl("finegroupmm"), strconv.FormatFloat(suggested, 'f', -1, 64))
-			} else {
-				set(a.ctl("finegroupmm"), "")
-			}
-			send(a.ctl("finegroupactive"), BM_SETCHECK, 0, 0)
 		}
+		if suggested > 0 {
+			set(a.ctl("finegroupmm"), strconv.FormatFloat(suggested, 'f', -1, 64))
+		} else {
+			set(a.ctl("finegroupmm"), "")
+		}
+		send(a.ctl("finegroupactive"), BM_SETCHECK, 0, 0)
 	}
 	refresh()
 }
@@ -2616,6 +2942,10 @@ func chineseNameHint(name string) string {
 		return "平面候选"
 	case strings.HasPrefix(name, "AM_"):
 		return "自动命名组"
+	case strings.EqualFold(name, "inlet"):
+		return "进气边界（人工命名）"
+	case strings.EqualFold(name, "outlet"):
+		return "出气边界（人工命名）"
 	default:
 		return "已有人工命名"
 	}
@@ -2644,7 +2974,7 @@ func (a *state) redrawNamedRows() {
 	for i, g := range a.sizeBuckets {
 		names := []string{}
 		for _, n := range g.Members {
-			if a.showAllNamed || strings.HasPrefix(n, "AM_") {
+			if a.showAllNamed || strings.HasPrefix(n, "AM_") || strings.EqualFold(n, "inlet") || strings.EqualFold(n, "outlet") {
 				names = append(names, n)
 			}
 		}
@@ -2678,6 +3008,7 @@ func (a *state) redrawNamedRows() {
 			if v, ok := a.selectedNamed[name]; ok {
 				label += fmt.Sprintf(" · %.3g mm", v)
 			}
+			label += " · " + namedSizingCoverage(a.snapshot, ns)
 			label += "  [" + shorten(name, 22) + "]"
 			addList(lst, label)
 			if name == previous {
@@ -2695,7 +3026,7 @@ func (a *state) redrawNamedRows() {
 }
 func (a *state) resetRecommendations() {
 	if a.snapshot == nil {
-		alert("请先只读扫描当前 Meshing 模型")
+		alert("请先完整扫描当前 Meshing 几何")
 		return
 	}
 	base := displayedGlobalMM(a.snapshot, a.scannedBaseMM)
@@ -2785,7 +3116,7 @@ func (a *state) saveBulkEditor() {
 		alert("请先选中左侧带 ▼ 的整组标题，再调整整组尺寸；子项只做单项修改")
 		return
 	}
-	text := strings.TrimSpace(read(a.ctl("finebulkmm")))
+	text := strings.TrimSpace(read(a.ctl("finegroupmm")))
 	mm, err := strconv.ParseFloat(text, 64)
 	if err != nil || math.IsInf(mm, 0) || math.IsNaN(mm) || mm < 0.35 || mm > 500 {
 		alert("整组尺寸必须是 0.35–500 mm 的有效数值")
@@ -2824,25 +3155,14 @@ func (a *state) saveGroupEditor() {
 	}
 	name := a.namedVisible[idx].Name
 	if _, header := parseBucketMarker(name); header {
-		alert("当前选中的是整组。请在「整组尺寸」输入值并点击「整组设置」，或展开后选单项")
+		alert("当前选中的是整组。请使用统一的「应用整组尺寸」按钮；展开后可对单项单独设置。")
 		return
 	}
 	if a.selectedNamed == nil {
 		a.selectedNamed = map[string]float64{}
 	}
 	if send(a.ctl("finegroupactive"), BM_GETCHECK, 0, 0) != 1 {
-		if a.pausedNamedSizes == nil {
-			a.pausedNamedSizes = map[string]float64{}
-		}
-		if mm, exists := a.selectedNamed[name]; exists {
-			a.pausedNamedSizes[name] = mm
-		}
-		delete(a.selectedNamed, name)
-		a.planCustomized = true
-		a.invalidatePreparedAfterEdit()
-		a.persistNamedChoices()
-		a.redrawNamedRows()
-		a.message("已停用该命名组：" + shorten(name, 32))
+		alert("该命名组当前未启用。请先勾选「启用此命名组」，再应用尺寸；当前不会发布或写入 Meshing。")
 		return
 	}
 	mm, err := strconv.ParseFloat(strings.TrimSpace(read(a.ctl("finegroupmm"))), 64)
@@ -2875,18 +3195,67 @@ func (a *state) act(id int) {
 		a.switchPage(2)
 	case ID_NAV_REPORT:
 		a.switchPage(3)
-	case ID_NAV_SETTINGS:
+	case ID_NAV_ANALYSIS:
 		a.switchPage(4)
+	case ID_NAV_SETTINGS:
+		a.switchPage(5)
+	case ID_SYNC_STATUS:
+		a.run("sync_status")
+	case ID_TASK_CENTER:
+		a.toggleTaskCenter()
+	case ID_TASK_DRAWER_CLOSE:
+		if a.taskCenterOpen {
+			a.toggleTaskCenter()
+		}
+	case ID_ANALYSIS_DEEP_QUALITY:
+		if !confirm("此操作只读采集当前 Meshing 网格的原生逐单元 Skewness，网格较大时可能耗时较长。\n若 ACT 不提供原生元素结果，将明确标记为未取得，不生成网格、不修改 Sizing。\n\n确认开始独立采集任务？") {
+			return
+		}
+		a.run("quality_check_deep")
+	case ID_ANALYSIS_REFRESH:
+		a.refreshAnalysisHistory()
+	case ID_ANALYSIS_EXPORT:
+		a.openQualityHistoryCSV()
+	case ID_ANALYSIS_REPORT:
+		a.openQualityAnalysisReport()
+	case ID_ACTION_HELP:
+		a.showPageActionHelp()
+	case ID_ANALYSIS_TAB_OVERVIEW:
+		a.analysisTab = 0
+		a.updateAnalysisRegionVisibility()
+		refresh()
+	case ID_ANALYSIS_TAB_COMPARE:
+		a.analysisTab = 1
+		a.updateAnalysisRegionVisibility()
+		refresh()
+	case ID_ANALYSIS_TAB_DISTRIBUTION:
+		a.analysisTab = 2
+		a.updateAnalysisRegionVisibility()
+		refresh()
+	case ID_ANALYSIS_TAB_REGION:
+		a.analysisTab = 3
+		a.updateAnalysisRegionVisibility()
+		refresh()
 	case ID_AUTO:
 		if !a.connected {
 			a.connect(false)
 		} else if a.snapshot == nil || a.scannedSystem == "" {
-			alert("请先在概览页点击只读扫描，然后审核局部细化方案。")
+			a.switchPage(2)
+			a.message("请在本页执行完整几何扫描，再配置现有 Named Selection 的局部尺寸。")
 		} else {
 			a.switchPage(2)
 		}
 	case ID_FINE_GROUP_SAVE:
-		a.saveGroupEditor()
+		idx := int(send(a.ctl("finegroups"), LB_GETCURSEL, 0, 0))
+		if idx >= 0 && idx < len(a.namedVisible) {
+			if _, isGroup := parseBucketMarker(a.namedVisible[idx].Name); isGroup {
+				a.saveBulkEditor()
+			} else {
+				a.saveGroupEditor()
+			}
+		} else {
+			alert("请先选择左侧命名或整组标题")
+		}
 	case ID_FINE_AUTO_RECOMMEND:
 		if !confirm("重新计算推荐尺寸将重置本页未发布的人工尺寸设置。不会修改 Meshing。确认？") {
 			return
@@ -2906,6 +3275,19 @@ func (a *state) act(id int) {
 		a.run("inspect")
 	case ID_QUALITY_CHECK:
 		a.run("quality_check")
+	case ID_MARK_EXECUTE:
+		switch int(send(a.ctl("markrule"), CB_GETCURSEL, 0, 0)) {
+		case 0:
+			a.run("mark_failed")
+		case 1:
+			a.run("mark_warning")
+		case 2:
+			a.run("mark_high_skew")
+		case 3:
+			a.run("mark_low_element_quality")
+		default:
+			alert("请选择一种目标单元标记规则")
+		}
 	case ID_CHINESE_NAMES:
 		a.run("rename_auxiliary")
 	case ID_FINE_NAMES:
@@ -2953,11 +3335,18 @@ func (a *state) act(id int) {
 		a.openCandidateReview()
 	case ID_REVIEW_BACK:
 		a.switchPage(3)
+	case ID_REVIEW_SELECT_ALL:
+		a.applyReviewBulkSelection(reviewGroupAll)
+	case ID_REVIEW_SELECT_SEVERE:
+		a.applyReviewBulkSelection(reviewGroupSevere)
+	case ID_REVIEW_SELECT_WARNING:
+		a.applyReviewBulkSelection(reviewGroupWarning)
+	case ID_REVIEW_SELECT_OTHER:
+		a.applyReviewBulkSelection(reviewGroupOther)
+	case ID_REVIEW_WHY_DISABLED:
+		a.showReviewPublishReason()
 	case ID_REVIEW_CLEAR:
-		for i := range a.reviewPlan.Clusters {
-			a.reviewUncheck(i)
-		}
-		a.reviewSelectionSummary()
+		a.clearReviewSelection()
 	case ID_REVIEW_DETAILS:
 		a.openCandidateReviewDetails()
 	case ID_REVIEW_CONFIRM:
@@ -2991,8 +3380,8 @@ func (a *state) act(id int) {
 			alert("未解除任务锁：" + e.Error())
 			return
 		}
-		alert("已存档旧任务至：" + archive + "。现在请重新只读扫描；若旧控制残留，按完全匹配恢复规则处理。")
-	case ID_COPY:
+		alert("已存档旧任务至：" + archive + "。现在请重新执行完整几何扫描；若旧控制残留，按完全匹配恢复规则处理。")
+	case ID_COPY, ID_TASK_DRAWER_LOG:
 		a.openTaskLog()
 	}
 }
@@ -3000,7 +3389,7 @@ func (a *state) drawBtn(item *drawItem) {
 	id := int(item.ID)
 	r := item.RC
 	nav := id >= ID_NAV_HOME && id <= ID_NAV_SETTINGS
-	primary := id == ID_AUTO || id == ID_CONNECT || id == ID_FINE_GENERATE || id == ID_MARK_HIGH_SKEW || id == ID_WARNING_PUBLISH || id == ID_REVIEW_CONFIRM
+	primary := id == ID_AUTO || id == ID_CONNECT || id == ID_FINE_GENERATE || id == ID_MARK_EXECUTE || id == ID_WARNING_PUBLISH || id == ID_REVIEW_CONFIRM || id == ID_QUALITY_CHECK
 	danger := id == ID_TASK_STOP || id == ID_CLEAR_LEASE
 	fillclr, fg := color(239, 243, 249), navy
 	if primary {
@@ -3010,6 +3399,14 @@ func (a *state) drawBtn(item *drawItem) {
 			fillclr, fg = bluepale, cobalt
 		} else {
 			fillclr, fg = color(251, 252, 255), slate
+		}
+	} else if id >= ID_ANALYSIS_TAB_OVERVIEW && id <= ID_ANALYSIS_TAB_REGION {
+		activeTab := map[int]int{ID_ANALYSIS_TAB_OVERVIEW: 0, ID_ANALYSIS_TAB_COMPARE: 1,
+			ID_ANALYSIS_TAB_DISTRIBUTION: 2, ID_ANALYSIS_TAB_REGION: 3}[id]
+		if a.analysisTab == activeTab {
+			fillclr, fg = bluepale, cobalt
+		} else {
+			fillclr, fg = white, slate
 		}
 	} else if danger {
 		fillclr, fg = stoppale, stopink
@@ -3045,12 +3442,20 @@ func (a *state) drawBtn(item *drawItem) {
 	txt(item.HDC, s, r, sz, wt, fg, DT_CENTER|DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS)
 }
 func isActionID(id int) bool {
-	return (id >= ID_NAV_HOME && id <= ID_REVIEW_DETAILS && id != ID_FINE_GROUP_SELECT) || id == ID_STORAGE_CHANGE
+	return (id >= ID_NAV_HOME && id <= ID_REVIEW_DETAILS && id != ID_FINE_GROUP_SELECT) ||
+		(id >= ID_REVIEW_SELECT_ALL && id <= ID_REVIEW_WHY_DISABLED) ||
+		id == ID_ANALYSIS_REPORT || id == ID_ACTION_HELP ||
+		(id >= ID_SYNC_STATUS && id <= ID_MARK_EXECUTE) || id == ID_STORAGE_CHANGE || id == ID_TASK_DRAWER_LOG
 }
 func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 	switch msg {
 	case WM_ERASEBKGND:
 		return 1
+	case WM_KEYDOWN:
+		if w == 0x70 /*VK_F1*/ {
+			ui.showPageActionHelp()
+			return 0
+		}
 	case WM_GETMINMAXINFO:
 		if l != 0 { // MINMAXINFO: ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize
 			*(*int32)(unsafe.Pointer(l + 24)) = 940
@@ -3205,7 +3610,16 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 			return 0
 		}
 		if l == ui.ctl("systems") && (w>>16) == CBN_SELCHANGE {
-			ui.updateActionStates()
+			ui.onMeshSystemSelectionChanged()
+			return 0
+		}
+		if (l == ui.ctl("analysisbase") || l == ui.ctl("analysistarget")) && (w>>16) == CBN_SELCHANGE {
+			ui.refreshAnalysisRegionList()
+			refresh()
+			return 0
+		}
+		if l == ui.ctl("markrule") && (w>>16) == CBN_SELCHANGE {
+			ui.onMarkerRuleChanged()
 			return 0
 		}
 		if (l == ui.ctl("skewlow") || l == ui.ctl("skewhigh")) && (w>>16) == EN_CHANGE {
@@ -3231,6 +3645,7 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		call(bkmode, w, 1)
 		return call(gdi.NewProc("GetStockObject"), 0) // WHITE_BRUSH fallback returned by gdi? overwritten below
 	case WM_APPSTATUS:
+		ui.refreshTaskCenterText()
 		refresh()
 		return 0
 	case WM_APPINIT:
@@ -3252,6 +3667,11 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		return 0
 	case WM_APPDONE:
 		ui.finish(w == 1)
+		if ui.taskCenterOpen {
+			ui.taskCenterStatus = ui.ws.taskStatus()
+			ui.taskCenterStatusUpdatedAt = time.Now()
+			ui.refreshTaskCenterText()
+		}
 		return 0
 	case WM_APPSTORAGE:
 		ui.finishStorage()
@@ -3261,7 +3681,7 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		releaseGDI()
 		// Save a short local performance diagnostic after closing; no UI-thread disk I/O during painting.
 		perf := map[string]any{"paint_count": uiRepaints, "paint_max_ms": float64(paintDurationMax.Microseconds()) / 1000,
-			"back_buffer_allocations": backBitmapAllocations, "control_moves": layoutMoves, "version": "R8.0.4-Continuous-Refinement",
+			"back_buffer_allocations": backBitmapAllocations, "control_moves": layoutMoves, "version": "R8.1-Release-Candidate",
 			"first_paint_ms": firstPaintMs, "nav_switch_max_ms": float64(navigationDurationMax.Microseconds()) / 1000,
 			"layout_max_ms": float64(layoutDurationMax.Microseconds()) / 1000}
 		_ = writeJSON(ui.ws.path("ui_performance.json"), perf)
@@ -3305,7 +3725,7 @@ func main() {
 		alert("无法注册 Windows 主窗口")
 		return
 	}
-	ui.window = call(create, 0, name, ptr("AutoMesh 2024 R2  |  R8.0.4 · Continuous Refinement"), WS_OVERLAPPEDWINDOW|WS_VSCROLL|WS_HSCROLL, 70, 25, 1240, 730, 0, 0, ui.instance, 0)
+	ui.window = call(create, 0, name, ptr("AutoMesh R8.1  |  六页面网格优化 · 发布候选版"), WS_OVERLAPPEDWINDOW|WS_VSCROLL|WS_HSCROLL, 70, 25, 1240, 730, 0, 0, ui.instance, 0)
 	if ui.window == 0 {
 		alert("无法创建 Windows 主窗口")
 		return

@@ -35,7 +35,9 @@ class ReceiptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'Run_In_Existing_Meshing.py'
             path.write_text('pass')
-            (path.parent/'job.json').write_text(json.dumps({'job_id':'a'*32}))
+            task = {'job_id':'a'*32, 'logical_job_id':'b'*32, 'attempt_id':'c'*32,
+                    'attempt_number':2, 'retry_of_job_id':'d'*32}
+            (path.parent/'job.json').write_text(json.dumps(task))
             mesh=Mesh(path.parent)
             wb=FakeWB(Model(mesh))
             orig=bridge.list_systems
@@ -46,6 +48,10 @@ class ReceiptTests(unittest.TestCase):
             self.assertEqual(mesh.calls,1)
             receipt=json.loads((path.parent/('wb_dispatch_'+'a'*32+'.json')).read_text())
             self.assertEqual(receipt['status'],'wb_sendcommand_returned')
+            self.assertEqual(receipt['logical_job_id'], task['logical_job_id'])
+            self.assertEqual(receipt['attempt_id'], task['attempt_id'])
+            self.assertEqual(receipt['attempt_number'], 2)
+            self.assertEqual(receipt['retry_of_job_id'], task['retry_of_job_id'])
 
     def test_must_have_valid_job_identity_before_send(self):
         with tempfile.TemporaryDirectory() as tmp:

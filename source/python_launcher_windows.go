@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -73,7 +74,11 @@ func probePythonCandidate() (pythonCandidate, error) {
 		unique[key] = true
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 		args := append(append([]string{}, candidate.prefix...), "-c", "import sys; import ansys.workbench.core; print('AUTOMESH_PYTHON_READY')")
-		out, err := exec.CommandContext(ctx, candidate.exe, args...).CombinedOutput()
+		cmd := exec.CommandContext(ctx, candidate.exe, args...)
+		// This probe runs during GUI startup. Without CREATE_NO_WINDOW, a
+		// console-subsystem python.exe may briefly open its own terminal.
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+		out, err := cmd.CombinedOutput()
 		cancel()
 		if err == nil && strings.Contains(string(out), "AUTOMESH_PYTHON_READY") {
 			return candidate, nil

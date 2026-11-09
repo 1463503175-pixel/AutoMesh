@@ -23,8 +23,8 @@ func testGroupSnap() *Snapshot {
 func TestRecommendationsAreRealNamedAndKeepBoundaries(t *testing.T) {
 	s := testGroupSnap()
 	a := recommendNamedSizes(s, 8)
-	if len(a) != 3 {
-		t.Fatalf("wanted 3 groups, got %#v", a)
+	if len(a) != 4 {
+		t.Fatalf("wanted 4 groups including inlet, got %#v", a)
 	}
 	rec := map[string]float64{}
 	for _, x := range a {
@@ -36,8 +36,13 @@ func TestRecommendationsAreRealNamedAndKeepBoundaries(t *testing.T) {
 	if rec["4inch"] < 3 || rec["4inch"] > 4 {
 		t.Errorf("repeat wafer-sized faces: %.3f", rec["4inch"])
 	}
-	if _, ok := rec["inlet"]; ok {
-		t.Fatal("inlet should never be recommended")
+	if rec["inlet"] <= 0 || rec["inlet"] >= 8 {
+		t.Fatal("inlet must have adjustable area-based suggestion")
+	}
+	for _, item := range a {
+		if item.Name == "inlet" && item.Eligible {
+			t.Fatal("inlet must not be auto-enabled")
+		}
 	}
 	b := groupAdvice(a, nil)
 	if len(b) < 2 {

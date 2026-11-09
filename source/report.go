@@ -26,16 +26,21 @@ const htmlReport = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8
 <div class="grid">
 <div class="card"><div class="k">网格单元数</div><div class="v">{{.Elements}}</div></div>
 <div class="card"><div class="k">最大偏度</div><div class="v">{{.MaxSkew}}</div></div>
-<div class="card"><div class="k">正交质量最小值</div><div class="v">{{.MinOQ}}</div></div>
+{{if .HasOrthogonal}}<div class="card"><div class="k">正交质量最小值</div><div class="v">{{.MinOQ}}</div></div>{{end}}
+<div class="card"><div class="k">最小 Element Quality</div><div class="v">{{.MinEQ}}</div></div>
+<div class="card"><div class="k">最大 Element Quality</div><div class="v">{{.MaxEQ}}</div></div>
 <div class="card"><div class="k">Worksheet 失败单元</div><div class="v">{{.FailedCount}}</div></div>
 <div class="card"><div class="k">Worksheet 警告单元</div><div class="v">{{.WarningCount}}</div></div>
-<div class="card"><div class="k">CFD 质量判断</div><div class="v status">{{.Gate}}</div></div>
+<div class="card"><div class="k">平均单元质量（Element Quality）</div><div class="v">{{.MeanEQ}}</div><div class="subtle">0～1，越高越好；不代表 Fluent 验收</div></div>
 </div>
-<div class="card wide"><h2>正交质量读取状态与说明</h2>
+{{if .HasOrthogonal}}<div class="card wide"><h2>正交质量读取状态与说明</h2>
 <div class="desc">{{.OrthoDetail}}</div>
-<p class="subtle">ANSYS Meshing 图形界面提供 Orthogonal Quality，并不保证此 ACT 会话具有同名 MeshMetricType 枚举。没有返回实测值时不做推算，也不启动 Fluent。</p></div>
+<p class="subtle">该指标来自真实 ACT 接口；不根据偏度换算，也不启动 Fluent。</p></div>{{end}}
+{{if .ExtraMetrics}}<div class="card wide"><h2>原生 Worksheet 深度质量统计</h2>
+<div class="desc">{{.ExtraMetrics}}</div>
+<p class="subtle">只在人工请求深度采集且 ACT 实际返回时展示。计数为原生阈值筛选值；P95 与最小正交质量可能仅为实测区间，绝不按中点伪装精确值。不代表 Fluent 验收。</p></div>{{end}}
 <div class="card wide"><h2>分级诊断与操作建议</h2>
-<div class="desc">{{.QualityAdvice}}</div><p class="subtle">以下仅为基于可读取指标的筛查意见，不代表 Fluent 验收或网格无关性证明。</p></div>
+<div class="desc">{{.QualityAdvice}}</div><p class="subtle">辅助诊断状态：{{.Gate}}。此状态不是平均单元质量，更不等于 CFD 通过。以下仅为指标筛查意见，不代表 Fluent 验收或网格无关性证明。</p></div>
 <div class="card wide"><h2>实测补充统计</h2>
 <div class="desc">网格节点数：{{.Nodes}}
 Skewness 最小 / 平均 / 最大：{{.SkewMin}} / {{.SkewMean}} / {{.MaxSkew}}
@@ -44,6 +49,7 @@ Skewness 最小 / 平均 / 最大：{{.SkewMin}} / {{.SkewMean}} / {{.MaxSkew}}
 </div>
 <div class="card wide"><h2>质量数据说明</h2>
 <p>单元数、偏度等来自当前 ACT 返回；未返回的项目不会使用推算值代替。<strong>Worksheet 显示 0 仅代表当前已计算的指标和当前警告/失败阈值</strong>，不能证明整个网格没有低质量单元。最小正交质量如 ACT 不可读取，需要在 Fluent 中复核。</p>
+{{if not .HasOrthogonal}}<p class="subtle">正交质量数据未展示：{{.OrthoDetail}}</p>{{end}}
 {{if .Worksheet}}<table><thead><tr><th>Worksheet 指标</th><th>失败</th><th>警告</th></tr></thead><tbody>{{range .Worksheet}}<tr><td>{{.Name}}</td><td>{{.Failed}}</td><td>{{.Warning}}</td></tr>{{end}}</tbody></table>{{else}}<p>Worksheet 尚未返回可核验的失败/警告数据，请在 Meshing 中启用并刷新 Quality Worksheet。</p>{{end}}
 </div>
 {{if .OfficialMark}}<div class="card wide"><h2>ANSYS Worksheet 元素定位操作</h2>
@@ -92,8 +98,9 @@ type htmlFields struct {
 	OfficialStatus, OfficialMessage, OfficialGroups, OfficialCount, OfficialSample                                                                                                                 string
 	RiskRequested                                                                                                                                                                                  bool
 	RiskHeadline, RiskDescription, RiskStatus, RiskChecked, RiskCount                                                                                                                              string
-	QualityNote, OrthoDetail                                                                                                                                                                       string
-	QualityAdvice, MinFreeRAM, MeshReference                                                                                                                                                       string
+	HasOrthogonal                                                                                                                                                                                  bool
+	QualityNote, OrthoDetail, ExtraMetrics                                                                                                                                                         string
+	QualityAdvice, MinFreeRAM, MeshReference, MinEQ, MaxEQ, MeanEQ                                                                                                                                 string
 	FailedCount, WarningCount, Nodes, SkewMin, SkewMean, MeasurementSource                                                                                                                         string
 	Worksheet                                                                                                                                                                                      []worksheetRow
 	Coverage                                                                                                                                                                                       string
@@ -148,12 +155,16 @@ func (w Workspace) SaveHTMLReport(s *Snapshot, r Result) (string, error) {
 		SkewMean: stringMetric(nested(m, "quality", "skewness", "mean")), MeasurementSource: stringMetric(m["quality_source"]),
 		Elements: stringMetric(m["mesh_elements"]), MaxSkew: stringMetric(nested(m, "quality", "skewness", "max")),
 		MinOQ:     stringMetric(nested(m, "quality", "orthogonal_quality", "min")),
+		MinEQ:     stringMetric(nested(m, "quality", "element_quality", "min")),
+		MaxEQ:     stringMetric(nested(m, "quality", "element_quality", "max")),
+		MeanEQ:    stringMetric(nested(m, "quality", "element_quality", "mean")),
 		Gaps:      stringMetric(nested(m, "geometry_evidence", "candidate_groups_published")),
 		Cylinders: stringMetric(nested(m, "geometry_evidence", "valid_area_faces")),
 		Gate:      stringMetric(m["quality_gate"]) + " / " + stringMetric(m["quality_status"]), AddedControls: stringMetric(m["added_control_count"]),
 		ReusedControls: stringMetric(m["reused_control_count"]),
 		Seconds:        stringMetric(m["seconds"]), Action: stringMetric(m["next_action"]), Export: stringMetric(m["export"]),
 	}
+	f.HasOrthogonal = nested(m, "quality", "orthogonal_quality", "min") != nil
 	f.OrthoDetail = "本任务尚未取得正交质量诊断；先执行「只读检查网格质量」。"
 	if qualityMeasured {
 		diag, _ := nested(m, "quality", "orthogonal_quality_diagnostic").(map[string]any)
@@ -170,6 +181,17 @@ func (w Workspace) SaveHTMLReport(s *Snapshot, r Result) (string, error) {
 			}
 		}
 	}
+	if q, ok := nested(m, "quality", "skewness_threshold_statistics").(map[string]any); ok &&
+		stringMetric(q["status"]) == "bounded" {
+		f.ExtraMetrics = fmt.Sprintf("偏度 >0.90 单元数：%s；偏度 >0.95 单元数：%s\nP95 偏度实测区间：%s ～ %s\n来源：%s",
+			stringMetric(q["above_0_90"]), stringMetric(q["above_0_95"]),
+			stringMetric(q["p95_lower"]), stringMetric(q["p95_upper"]), stringMetric(q["source"]))
+	}
+	if o, ok := nested(m, "quality", "orthogonal_quality_bound").(map[string]any); ok &&
+		stringMetric(o["status"]) == "bounded" {
+		f.ExtraMetrics += fmt.Sprintf("\n最小正交质量实测区间：%s ～ %s\n来源：%s",
+			stringMetric(o["min_lower"]), stringMetric(o["min_upper"]), stringMetric(o["source"]))
+	}
 	f.QualityAdvice = qualityAdvice(m)
 	f.MinFreeRAM = "未记录"
 	f.MeshReference = stringMetric(nested(m, "mesh_reference", "status"))
@@ -180,9 +202,23 @@ func (w Workspace) SaveHTMLReport(s *Snapshot, r Result) (string, error) {
 		f.MeasurementSource = "无；本任务不是质量检查"
 		f.MaxSkew = "本任务未测量"
 		f.MinOQ = "本任务未测量"
+		f.MinEQ = "本任务未测量"
+		f.MaxEQ = "本任务未测量"
+		f.MeanEQ = "本任务未测量"
 		f.Gate = "尚未进行质量检查"
 	} else if nested(m, "quality", "orthogonal_quality", "min") == nil {
 		f.MinOQ = "ANSYS ACT 未提供；需 Fluent 核验"
+	}
+	if qualityMeasured {
+		if nested(m, "quality", "element_quality", "min") == nil {
+			f.MinEQ = "未取得"
+		}
+		if nested(m, "quality", "element_quality", "max") == nil {
+			f.MaxEQ = "未取得"
+		}
+		if nested(m, "quality", "element_quality", "mean") == nil {
+			f.MeanEQ = "未取得"
+		}
 	}
 	if qualityMeasured && f.MeasurementSource == "未获取" {
 		f.MeasurementSource = "ANSYS ACT 当前网格 MeshMetric"
@@ -494,6 +530,12 @@ func qualityAdvice(summary map[string]any) string {
 	} else {
 		messages = append(messages, "3. 未获得 Worksheet 指标计数：刷新 Meshing 质量表，必要时执行辅助诊断定位。")
 	}
-	messages = append(messages, "4. 记录同方案的单元数、细化区域、生成耗时和可用内存；仅在质量异常区域进行下一轮修改，最终用 Fluent 检查边界、守恒和网格无关性。")
+	eqMean, hasEQ := parse("quality", "element_quality", "mean")
+	if hasEQ && eqMean >= 0 && eqMean <= 1 {
+		messages = append(messages, fmt.Sprintf("4. 平均单元质量（Element Quality）%.4f，越接近 1 越好；必须结合最差单元与分布判断，不能单凭平均值判定 CFD 合格。", eqMean))
+	} else {
+		messages = append(messages, "4. 平均单元质量未取得：当前 ACT 可能没有提供 Element Quality；不会从偏度或正交质量推算。")
+	}
+	messages = append(messages, "5. 记录同方案的单元数、细化区域、生成耗时和可用内存；仅在质量异常区域进行下一轮修改，最终用 Fluent 检查边界、守恒和网格无关性。")
 	return strings.Join(messages, "\n")
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,11 +26,24 @@ type Body struct {
 	Volume    float64 `json:"volume"`
 	FaceCount int     `json:"face_count"`
 }
+
+// Face retains optional read-only ACT geometry evidence for local defect review.
+// Existing JSON snapshots without these fields remain compatible.
 type Face struct {
-	ID   int     `json:"id"`
-	Body int     `json:"body"`
-	Area float64 `json:"area"`
-	Type string  `json:"type"`
+	ID       int           `json:"id"`
+	Body     int           `json:"body"`
+	Area     float64       `json:"area"`
+	Type     string        `json:"type"`
+	Centroid []float64     `json:"centroid,omitempty"`
+	BBox     []float64     `json:"bbox,omitempty"`
+	Edges    []FeatureEdge `json:"feature_edges,omitempty"`
+}
+
+// FeatureEdge describes an actual ACT geometry edge, not a mesh element edge.
+// Its ID is a reference for manual inspection, never an auto-publish scope.
+type FeatureEdge struct {
+	ID     int     `json:"id"`
+	Length float64 `json:"length"`
 }
 type Named struct {
 	Name string `json:"name"`
@@ -41,6 +55,8 @@ type Snapshot struct {
 	DisplayLengthUnit                string           `json:"display_length_unit"`
 	Project                          string           `json:"project"`
 	Fingerprint                      string           `json:"fingerprint"`
+	GeometryQuickSignature           string           `json:"geometry_quick_signature,omitempty"`
+	MeshSignature                    string           `json:"mesh_signature,omitempty"`
 	Bodies                           []Body           `json:"bodies"`
 	Faces                            []Face           `json:"faces"`
 	Named                            []Named          `json:"named"`
@@ -78,11 +94,20 @@ type Plan struct {
 	Review                  []Control          `json:"review"`
 	SkewMin                 float64            `json:"-"`
 	SkewMax                 float64            `json:"-"`
+	QualityMin              float64            `json:"-"`
+	QualityMax              float64            `json:"-"`
 	Policy                  string             `json:"policy"`
 }
 type Task struct {
+	// JobID remains the unique per-execution ID consumed by the existing ACT protocol.
 	JobID                     string  `json:"job_id"`
+	LogicalJobID              string  `json:"logical_job_id,omitempty"`
+	AttemptID                 string  `json:"attempt_id,omitempty"`
+	AttemptNumber             int     `json:"attempt_number,omitempty"`
+	RetryOfJobID              string  `json:"retry_of_job_id,omitempty"`
 	Phase                     string  `json:"phase"`
+	MeshSystem                string  `json:"mesh_system,omitempty"`
+	SubmittedAt               string  `json:"submitted_at,omitempty"`
 	ProtocolVersion           int     `json:"protocol_version"`
 	ExpectedProject           string  `json:"expected_project,omitempty"`
 	Fingerprint               string  `json:"geometry_fingerprint,omitempty"`
@@ -90,19 +115,29 @@ type Task struct {
 	ExportPath                string  `json:"export_path,omitempty"`
 	Overwrite                 bool    `json:"overwrite,omitempty"`
 	QualityReviewAcknowledged bool    `json:"quality_review_acknowledged,omitempty"`
+	DeepNativeSkewness        bool    `json:"deep_native_skewness,omitempty"`
 	AllowExistingMeshSizing   bool    `json:"allow_existing_mesh_sizing,omitempty"`
 	BaseMM                    float64 `json:"base_mm,omitempty"`
 	SkewMin                   float64 `json:"skew_min"`
 	SkewMax                   float64 `json:"skew_max"`
+	QualityMin                float64 `json:"quality_min,omitempty"`
+	QualityMax                float64 `json:"quality_max,omitempty"`
 	ApplyGlobal               bool    `json:"apply_global,omitempty"`
 }
 type Result struct {
-	JobID   string          `json:"job_id"`
-	Phase   string          `json:"phase"`
-	Status  string          `json:"status"`
-	Stage   string          `json:"stage,omitempty"`
-	Summary json.RawMessage `json:"summary"`
-	Error   string          `json:"error"`
+	JobID              string          `json:"job_id"`
+	LogicalJobID       string          `json:"logical_job_id,omitempty"`
+	AttemptID          string          `json:"attempt_id,omitempty"`
+	AttemptNumber      int             `json:"attempt_number,omitempty"`
+	RetryOfJobID       string          `json:"retry_of_job_id,omitempty"`
+	VerificationStatus string          `json:"verification_status,omitempty"`
+	Phase              string          `json:"phase"`
+	Status             string          `json:"status"`
+	Stage              string          `json:"stage,omitempty"`
+	CompletedAt        string          `json:"completed_at,omitempty"`
+	CompletedAtUnix    float64         `json:"completed_at_unix,omitempty"`
+	Summary            json.RawMessage `json:"summary"`
+	Error              string          `json:"error"`
 }
 
 func friendlyACTError(trace string) string {
@@ -278,10 +313,13 @@ func (w Workspace) acquireTaskLease(t Task) error {
 		if readErr != nil || old.JobID == "" {
 			return errors.New("存在不可读取的 active_task.json；可能有另一任务运行，禁止覆盖")
 		}
-		_, finished := w.terminalResultForJob(old.JobID)
+		terminal, finished := w.terminalResultForTask(old)
 		if finished {
-			// In a single-instance process, only a verified terminal result
-			// may free an old lease. No unattended stale-timeout deletion.
+			// Persist the terminal lifecycle state before freeing a verified lease.
+			if e := w.recordTaskResult(old, terminal); e != nil {
+				return fmt.Errorf("任务已终止，但无法保存历史状态；保留任务锁：%w", e)
+			}
+			// No unattended stale-timeout deletion.
 			if e := os.Remove(path); e != nil {
 				return fmt.Errorf("任务已结束但无法解锁: %w", e)
 			}
@@ -343,7 +381,10 @@ func (w Workspace) UnconfirmedActiveTask() (Task, bool, error) {
 	if t.JobID == "" {
 		return t, true, errors.New("当前任务记录缺少 ID")
 	}
-	if _, terminal := w.terminalResultForJob(t.JobID); terminal {
+	if result, terminal := w.terminalResultForTask(t); terminal {
+		if err := w.recordTaskResult(t, result); err != nil {
+			return t, true, err
+		}
 		return t, false, nil
 	}
 	return t, true, nil
@@ -356,7 +397,7 @@ func (w Workspace) ReconcileFinishedLease() error {
 	if err != nil {
 		return fmt.Errorf("无法读取旧任务占用: %w", err)
 	}
-	if _, found := w.terminalResultForJob(lease.JobID); found {
+	if _, found := w.terminalResultForTask(lease); found {
 		return w.releaseTaskLease(lease.JobID)
 	}
 	// ACT may have emitted its terminal failure marker but failed to save
@@ -381,14 +422,17 @@ func (w Workspace) releaseTaskLease(jobID string) error {
 	if old.JobID != jobID {
 		return errors.New("任务 ID 不匹配，拒绝解除占用")
 	}
-	last, terminal := w.terminalResultForJob(jobID)
+	last, terminal := w.terminalResultForTask(old)
 	if !terminal {
 		return errors.New("仅可在 Meshing 结果确认为终态时解除任务锁")
+	}
+	if err := w.recordTaskResult(old, last); err != nil {
+		return fmt.Errorf("任务终态已收到，但历史状态无法持久化；保留任务锁：%w", err)
 	}
 	// If the per-job receipt survived but last_result.json did not, repair
 	// the UI's current report before dropping the lease.
 	generic, e := w.LoadResult()
-	if e != nil || generic.JobID != jobID || !taskTerminal(generic.Status) {
+	if e != nil || !resultMatchesTask(old, generic) || !taskTerminal(generic.Status) {
 		if e := writeJSON(w.path("last_result.json"), last); e != nil {
 			return e
 		}
@@ -400,6 +444,10 @@ func (w Workspace) releaseTaskLease(jobID string) error {
 // A nil percentage means ANSYS has no verifiable progress ratio (e.g. GenerateMesh).
 type ActProgress struct {
 	JobID                  string  `json:"job_id"`
+	LogicalJobID           string  `json:"logical_job_id,omitempty"`
+	AttemptID              string  `json:"attempt_id,omitempty"`
+	AttemptNumber          int     `json:"attempt_number,omitempty"`
+	RetryOfJobID           string  `json:"retry_of_job_id,omitempty"`
 	Stage                  string  `json:"stage"`
 	Detail                 string  `json:"detail"`
 	Percent                *int    `json:"percent"`
@@ -448,7 +496,17 @@ func (w Workspace) WaitResult(jobID string, timeout, interval time.Duration, pro
 				lastHeartbeat = time.Now()
 			}
 		}
-		if terminal, found := w.terminalResultForJob(jobID); found {
+		var terminal Result
+		var found bool
+		if lease, leaseErr := readJSON[Task](w.taskLeasePath()); leaseErr == nil && lease.JobID == jobID {
+			terminal, found = w.terminalResultForTask(lease)
+		} else {
+			terminal, found = w.terminalResultForJob(jobID)
+		}
+		if found {
+			if lease, leaseErr := readJSON[Task](w.taskLeasePath()); leaseErr == nil && lease.JobID == jobID {
+				_ = w.recordTaskResult(lease, terminal)
+			}
 			if unlockErr := w.releaseTaskLease(jobID); unlockErr != nil && progress != nil {
 				progress("任务已结束，但无法释放任务占用记录：" + unlockErr.Error())
 			}
@@ -467,7 +525,11 @@ func (w Workspace) WaitResult(jobID string, timeout, interval time.Duration, pro
 		}
 		r, err := w.LoadResult()
 		if err == nil && r.JobID == jobID {
-			seenCurrentJob = true
+			if lease, leaseErr := readJSON[Task](w.taskLeasePath()); leaseErr == nil && lease.JobID == jobID && !resultMatchesTask(lease, r) {
+				r = Result{}
+			} else {
+				seenCurrentJob = true
+			}
 			switch r.Status {
 			case "ok", "error", "cancelled":
 				if unlockErr := w.releaseTaskLease(jobID); unlockErr != nil && progress != nil {
@@ -551,6 +613,9 @@ func writeAtomic(filename string, b []byte) error {
 // Only replace embedded generated worker files from verified AutoMesh releases.
 // Unknown or user-edited scripts must be examined rather than silently lost.
 var knownLegacyWorkerHashes = map[string]bool{
+	"b3ae587045e191ea2eeb45a20b02434c2e146497b1a4f8c84a81adfc6db5dc9b": true, // verified R8.1 RC 2026-11-08 / 2026-11-09 worker
+	"db33a9c1641a741249010435515937a6828734eede6c7622eb9e7c967f3e4ac1": true, // verified R8.1 RC EQ worker
+	"c35a1f010ecdcf26b1b343355a8f8769e84b9afff1dfa916d42be08cb5a4ecb2": true, // exact stage 2E verified worker, safe upgrade to opt-in quality distribution
 	"c6bbc68afb28ac07add565021498544c29a4bcc4928d6bc8527f9bc866a991d6": true, // exact R8.0.3 worker; permits safe R8.0.4 continuous-refinement upgrade
 	"5a9f10af7ad53b9ff168f52151375bfd87a456ec3c09b2627eb37dde745153c7": true, // exact R8.0.1 worker; permits safe in-place R8.0.2 upgrade
 	"7d4ec6d73f06a3c701535d71765f903b4d29be7a59d5b45bbf0bb66a49ca25e4": true, // verified R7.9 original release Worker for safe R8.0 upgrade
@@ -594,6 +659,9 @@ var knownLegacyAssetHashes = map[string]map[string]bool{
 		"5f39429a1afb9267e5870cbe87dd73c5048ea1d3d4081c4bafb9b7707b9f5acc": true,
 	},
 	"warning_refinement.py": {
+		"2e2c6bff9553e78b2ac641c285e62c7c5bbf4230bcf835ab4c3996158ba6c86a": true, // verified R8.1 2026-11-08 RC module
+		"c123df29ed187691d5701d8c6d298c6d8f18ce7b09c1e6042a92822caa2641ea": true, // verified R8.1 EQ interval module
+		"8c8a393f8dbd30828c7007d544476b5cf5d16ac8a81a73f6d4a8216d08d0ec28": true, // verified R8.1 EQ budget module
 		"899fbef06a7285b03168ef935fde9394ce9c2d605180baa8920d59b9641711fd": true, // exact R8.0.3 warning module; permits safe R8.0.4 continuous-refinement upgrade
 		"eaebbad9c9dac0b1a9e18d755ef19d0b236cfe8b8db444e4b46e2b62ffd6139a": true, // exact R8.0.1 warning module; permits safe in-place R8.0.2 upgrade
 		"c3c6e20c5a80eca010011630e07c9c2581dd2d0d254d7cd787871a7bfa00c39c": true, // verified R7.9 original release warning module for safe R8.0 upgrade
@@ -622,7 +690,7 @@ func checkGeneratedAssetReplacement(name string, existing, embedded []byte) erro
 	if hashes, ok := knownLegacyAssetHashes[name]; ok && hashes[hash] {
 		return nil
 	}
-	return fmt.Errorf("refusing to overwrite unrecognized/customized script %s (SHA256 %s): save it and review before AutoMesh upgrade", name, hash)
+	return fmt.Errorf("受保护脚本 %s 的版本无法识别，已保留文件；请勿删除 Data，提供 startup_diagnostic.json 核查（refusing to overwrite unrecognized/customized script, SHA256 %s）", name, hash)
 }
 
 type assetUpdate struct {
@@ -640,7 +708,10 @@ func (w Workspace) InstallAssets() error {
 	if err := os.MkdirAll(w.Dir, 0755); err != nil {
 		return err
 	}
-	names := []string{"meshing_worker.py", "workbench_bridge.py", "wb_cli.py", "geometry_rules.py", "warning_refinement.py", "wb_server_bootstrap.py", "start_wb_server_uia.ps1"}
+	// Trust only a receipt written after a successful AutoMesh install.
+	// Prior versions had no receipt: exact verified release hashes remain accepted.
+	receipt := w.readInstalledAssetReceipt()
+	names := managedScriptNames
 	pending := []assetUpdate{}
 	for _, name := range names {
 		b, err := embedded.ReadFile("assets/" + name)
@@ -657,7 +728,7 @@ func (w Workspace) InstallAssets() error {
 			continue
 		}
 		if existed {
-			if err = checkGeneratedAssetReplacement(name, prior, b); err != nil {
+			if err = checkGeneratedAssetReplacement(name, prior, b); err != nil && !receipt.owns(name, prior) {
 				return err
 			}
 		}
@@ -736,6 +807,11 @@ func (w Workspace) InstallAssets() error {
 	if err := w.WriteRunner(); err != nil {
 		return rollback(err)
 	}
+	// Commit the next-version upgrade receipt only after all seven official
+	// scripts and runner were successfully installed. It contains no task data.
+	if err := w.writeInstalledAssetReceipt(); err != nil {
+		return rollback(err)
+	}
 	return nil
 }
 
@@ -761,11 +837,29 @@ func (w Workspace) Command() string {
 }
 func newID() string { b := make([]byte, 16); _, _ = rand.Read(b); return hex.EncodeToString(b) }
 func (w Workspace) Submit(phase string, s *Snapshot, p *Plan, exportPath string, overwrite bool, qualityAck ...bool) (Task, error) {
-	t := Task{JobID: newID(), Phase: phase, ProtocolVersion: 2}
+	return w.submitForSystem("", phase, s, p, exportPath, overwrite, qualityAck...)
+}
+
+// SubmitForSystem binds the durable task and ACT job payload to the exact Mesh
+// system selected in the existing Workbench session. The name is metadata; it
+// does not connect, launch, or switch any ANSYS session.
+func (w Workspace) SubmitForSystem(system, phase string, s *Snapshot, p *Plan, exportPath string, overwrite bool, qualityAck ...bool) (Task, error) {
+	return w.submitForSystem(system, phase, s, p, exportPath, overwrite, qualityAck...)
+}
+
+func (w Workspace) submitForSystem(system, phase string, s *Snapshot, p *Plan, exportPath string, overwrite bool, qualityAck ...bool) (Task, error) {
+	// An explicit deep read shares the existing read-only quality protocol.
+	// Its opt-in flag never propagates to ordinary quality checks.
+	deepNative := phase == "quality_check_deep"
+	if deepNative {
+		phase = "quality_check"
+	}
+	t := Task{JobID: newID(), LogicalJobID: newID(), AttemptID: newID(), AttemptNumber: 1,
+		Phase: phase, MeshSystem: strings.TrimSpace(system), SubmittedAt: time.Now().Format(time.RFC3339Nano), ProtocolVersion: 2, DeepNativeSkewness: deepNative}
 	if phase == "export" && len(qualityAck) > 0 && qualityAck[0] {
 		t.QualityReviewAcknowledged = true
 	}
-	valid := map[string]bool{"inspect": true, "apply": true, "generate": true, "quality": true, "export": true, "auto": true, "auto_onepass": true, "prepare": true, "publish_names": true, "publish_existing_sizing": true, "generate_reviewed": true, "diagnose": true, "mark_failed": true, "mark_warning": true, "mark_high_skew": true, "quality_check": true, "rename_auxiliary": true, "warning_refine_preview": true, "warning_refine_publish": true}
+	valid := map[string]bool{"inspect": true, "sync_status": true, "apply": true, "generate": true, "quality": true, "export": true, "auto": true, "auto_onepass": true, "prepare": true, "publish_names": true, "publish_existing_sizing": true, "generate_reviewed": true, "diagnose": true, "mark_failed": true, "mark_warning": true, "mark_high_skew": true, "mark_low_element_quality": true, "quality_check": true, "rename_auxiliary": true, "warning_refine_preview": true, "warning_refine_publish": true}
 	if !valid[phase] {
 		return t, errors.New("不支持该任务阶段")
 	}
@@ -776,13 +870,21 @@ func (w Workspace) Submit(phase string, s *Snapshot, p *Plan, exportPath string,
 		}
 		t.SkewMin, t.SkewMax = p.SkewMin, p.SkewMax
 	}
+	if phase == "mark_low_element_quality" {
+		if p == nil || p.QualityMin < 0 || p.QualityMax > 1 || p.QualityMin >= p.QualityMax ||
+			math.IsNaN(p.QualityMin) || math.IsNaN(p.QualityMax) || math.IsInf(p.QualityMin, 0) || math.IsInf(p.QualityMax, 0) {
+			return t, errors.New("Element Quality 范围必须满足 0 <= 下限 < 上限 <= 1")
+		}
+		t.QualityMin, t.QualityMax = p.QualityMin, p.QualityMax
+	}
 	if phase == "inspect" {
 		t.BaseMM = 12.0
 		if p != nil && p.GlobalMM >= 0.5 && p.GlobalMM <= 500 {
 			t.BaseMM = p.GlobalMM
 		}
 	}
-	if phase != "inspect" && phase != "auto_onepass" {
+	if phase != "inspect" && phase != "auto_onepass" && phase != "sync_status" &&
+		!((phase == "quality_check" || phase == "diagnose") && s == nil) {
 		if s == nil || s.Project == "" || s.Fingerprint == "" {
 			return t, errors.New("必须先读取当前 Meshing 几何")
 		}
@@ -828,9 +930,8 @@ func (w Workspace) Submit(phase string, s *Snapshot, p *Plan, exportPath string,
 	if err := w.acquireTaskLease(t); err != nil {
 		return t, err
 	}
-	if err := writeJSON(w.path("job.json"), t); err != nil {
-		// A job was not made available to the worker. No dispatch occurred.
-		_ = os.Remove(w.taskLeasePath())
+	if err := w.initializeTaskAttempt(t); err != nil {
+		_ = w.removeTaskLeaseIfOwned(t.JobID)
 		return t, err
 	}
 	return t, nil

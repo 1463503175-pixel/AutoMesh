@@ -26,6 +26,7 @@ const (
 	LVM_SETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 54
 	LVM_INSERTITEMW              = LVM_FIRST + 77
 	LVM_INSERTCOLUMNW            = LVM_FIRST + 97
+	LVM_SETCOLUMNW               = LVM_FIRST + 96
 	LVM_SETITEMTEXTW             = LVM_FIRST + 116
 	LVIF_TEXT                    = 1
 	LVIS_STATEIMAGEMASK          = 0xF000
@@ -110,9 +111,27 @@ func (a *state) populateCandidateList() {
 	a.reviewPopulating = true
 	defer func() { a.reviewPopulating = false }()
 	send(h, LVM_DELETEALLITEMS, 0, 0)
+	eqMode := a.reviewPlan.QualityMetric == "ElementQuality"
+	qualityHeading := "最大偏度"
+	if eqMode {
+		qualityHeading = "最低单元质量"
+	}
+	column := lvColumn{Mask: LVCF_TEXT, Text: ptr(qualityHeading)}
+	send(h, LVM_SETCOLUMNW, 1, uintptr(unsafe.Pointer(&column)))
+	labelSevere, labelWarning, labelOther := "偏度 ≥0.95", "0.90–0.95", "其他 / 未取得"
+	if eqMode {
+		labelSevere, labelWarning, labelOther = "质量 <0.05", "0.05–0.10", "其他 / 未取得"
+	}
+	settext.Call(a.ctl("reviewselectsevere"), ptr(labelSevere))
+	settext.Call(a.ctl("reviewselectwarning"), ptr(labelWarning))
+	settext.Call(a.ctl("reviewselectother"), ptr(labelOther))
 	for i, c := range a.reviewPlan.Clusters {
 		quality := "未取得"
-		if c.SkewMax != nil {
+		if eqMode {
+			if c.EQVerified && c.EQMin != nil {
+				quality = fmt.Sprintf("%.5f", *c.EQMin)
+			}
+		} else if c.SkewVerified && c.SkewMax != nil {
 			quality = fmt.Sprintf("%.5f", *c.SkewMax)
 		}
 		state := "待人工审核"
@@ -149,6 +168,78 @@ func (a *state) reviewChecked(i int) bool {
 func (a *state) reviewUncheck(i int) {
 	item := lvItem{State: 1 << 12, StateMask: LVIS_STATEIMAGEMASK}
 	send(a.ctl("reviewlist"), LVM_SETITEMSTATE, uintptr(i), uintptr(unsafe.Pointer(&item)))
+}
+func (a *state) reviewCheck(i int) {
+	item := lvItem{State: 2 << 12, StateMask: LVIS_STATEIMAGEMASK}
+	send(a.ctl("reviewlist"), LVM_SETITEMSTATE, uintptr(i), uintptr(unsafe.Pointer(&item)))
+}
+
+// The toolbar only changes checkbox state; no ACT task can be dispatched by it.
+// Every bulk action replaces the current selection and invalidates prior risk
+// confirmation, which must be performed for the exact resulting candidate set.
+func (a *state) applyReviewBulkSelection(group reviewSelectionGroup) {
+	if a.busy {
+		alert("当前任务运行中，不能批量变更候选勾选。")
+		return
+	}
+	if a.reviewPublishBlockedReason != "" {
+		alert("历史 Sizing 尚未安全匹配，只读审核无法批量选择可发布项。\n原因：" + a.reviewPublishBlockedReason)
+		return
+	}
+	if a.ctl("reviewlist") == 0 {
+		alert("候选列表不可用，不能批量勾选。")
+		return
+	}
+	result := selectReviewBulk(a.reviewPlan, group, a.reviewPublished, a.reviewExistingControls, a.reviewExistingBudget)
+	selected := make(map[string]bool, len(result.IDs))
+	for _, id := range result.IDs {
+		selected[id] = true
+	}
+	a.reviewPopulating = true
+	for i, c := range a.reviewPlan.Clusters {
+		if selected[c.ID] {
+			a.reviewCheck(i)
+		} else {
+			a.reviewUncheck(i)
+		}
+	}
+	a.reviewPopulating = false
+	a.reviewDetailsOpened = false
+	send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
+	a.reviewSelectionSummary()
+	a.message(fmt.Sprintf("批量勾选 %d 处；跳过不可用/冲突 %d 处。预算代理为预警、不作为自动勾选阻断；仍需人工核查并确认。", len(result.IDs), result.Skipped))
+}
+
+func (a *state) clearReviewSelection() {
+	if a.busy {
+		alert("当前任务运行中，不能修改候选勾选。")
+		return
+	}
+	a.reviewPopulating = true
+	for i := range a.reviewPlan.Clusters {
+		a.reviewUncheck(i)
+	}
+	a.reviewPopulating = false
+	a.reviewDetailsOpened = false
+	send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
+	a.reviewSelectionSummary()
+}
+
+func (a *state) currentReviewPublishGate(ids []string, budget int) reviewPublishGate {
+	return reviewPublishGate{
+		Busy: a.busy, HistoricalLock: a.reviewPublishBlockedReason,
+		Selected: len(ids), Budget: budget, NearDuplicate: a.reviewExistingNearDuplicate,
+		OverlapError: a.reviewOverlapError, DetailsOpened: a.reviewDetailsOpened,
+		RiskConfirmed: send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1,
+	}
+}
+func (a *state) showReviewPublishReason() {
+	a.reviewSelectionSummary()
+	reason := a.reviewConfirmDisabledReason
+	if reason == "" {
+		reason = "所有界面发布前提均已满足。点击「审核所选并发布」后还会执行方案身份、历史预算及 ACT 最终确认；本操作不会自动生成网格。"
+	}
+	alert(reason)
 }
 func (a *state) selectedCandidates() ([]string, int) {
 	var ids []string
@@ -204,7 +295,7 @@ func (a *state) selectedExistingSphereOverlap(ids []string) (overlapCount int, n
 }
 
 func (a *state) reviewSelectionSummary() {
-	if a.page != 5 || a.reviewPopulating {
+	if a.page != 6 || a.reviewPopulating {
 		return
 	}
 	ids, budget := a.selectedCandidates()
@@ -219,11 +310,14 @@ func (a *state) reviewSelectionSummary() {
 	signature := strings.Join(ids, "|")
 	if signature != a.reviewSelectedSignature {
 		send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
+		// Reviewing a previous set of spheres never approves new selections.
+		a.reviewDetailsOpened = false
 		a.reviewSelectedSignature = signature
 	}
 	a.reviewSelectedCount = len(ids)
 	a.reviewSelectedBudget = budget
-	enabled(a.ctl("reviewconfirm"), !a.busy && a.reviewPublishBlockedReason == "" && len(ids) > 0 && budget <= 120000 && !a.reviewOverlapError && a.reviewDetailsOpened && send(a.ctl("reviewrisk"), BM_GETCHECK, 0, 0) == 1)
+	a.reviewConfirmDisabledReason = a.currentReviewPublishGate(ids, budget).reason()
+	enabled(a.ctl("reviewconfirm"), a.reviewConfirmDisabledReason == "")
 	refresh()
 }
 func (a *state) openCandidateReview() {
@@ -282,7 +376,7 @@ func (a *state) openCandidateReview() {
 	send(a.ctl("reviewrisk"), BM_SETCHECK, 0, 0)
 	a.reviewPublished = published
 	a.reviewExistingBudget = budget
-	a.switchPage(5)
+	a.switchPage(6)
 	a.populateCandidateList()
 	a.reviewSelectionSummary()
 	if a.reviewPublishBlockedReason != "" {
@@ -290,6 +384,11 @@ func (a *state) openCandidateReview() {
 	}
 }
 func (a *state) confirmCandidateReview() {
+	a.reviewSelectionSummary()
+	if a.reviewConfirmDisabledReason != "" {
+		alert("当前不能发布 Sizing：\n" + a.reviewConfirmDisabledReason)
+		return
+	}
 	if a.reviewPublishBlockedReason != "" {
 		alert("当前仅允许查看局部方案，不能发布 Sizing。\n\n" + a.reviewPublishBlockedReason)
 		return
@@ -315,11 +414,14 @@ func (a *state) confirmCandidateReview() {
 		alert("候选影响域冲突：" + err.Error())
 		return
 	}
-	if budget > 120000 {
-		alert(fmt.Sprintf("累计预算代理约 %d，已超过 120000；减少勾选后再试。", budget))
-		return
+	budgetWarnAck := false
+	if budget > reviewBudgetLimit {
+		budgetWarnAck = confirm(fmt.Sprintf("当前已核验的历史预算代理 %d，本次新增 %d，预计累计 %d；超过建议预警值 %d（超出 %d）。\n\n这些数值不是新增网格单元数或内存预测。请确认已在影响域报告核查历史重合、片间净空、当前网格规模及内存余量；生成网格只能由你手动执行。\n\n确认在不取消任何 Sizing 安全检查的前提下，继续本批候选审核？", a.reviewExistingBudget, budget-a.reviewExistingBudget, budget, reviewBudgetLimit, budget-reviewBudgetLimit))
+		if !budgetWarnAck {
+			return
+		}
 	}
-	if _, err := a.ws.saveWarningSelection(a.snapshot, a.reviewPlan, ids); err != nil {
+	if _, err := a.ws.saveWarningSelectionWithBudgetAck(a.snapshot, a.reviewPlan, ids, budgetWarnAck); err != nil {
 		alert("未通过提交前安全核对：" + err.Error())
 		return
 	}
@@ -344,17 +446,27 @@ func (a *state) openCandidateReviewDetails() {
 func (a *state) drawCandidateReview(dc uintptr, x, cw int) {
 	textAt(dc, "局部优化候选 · 勾选审核", x+16, 84, cw-32, 43, 25, 700, navy)
 	verified := 0
+	eqMode := a.reviewPlan.QualityMetric == "ElementQuality"
 	for _, c := range a.reviewPlan.Clusters {
-		if c.SkewVerified && c.SkewMax != nil {
+		if eqMode && c.EQVerified && c.EQMin != nil {
+			verified++
+		}
+		if !eqMode && c.SkewVerified && c.SkewMax != nil {
 			verified++
 		}
 	}
-	qualityNote := fmt.Sprintf("已核验实测最大偏度：%d/%d；可读取的候选按最大偏度降序。", verified, len(a.reviewPlan.Clusters))
+	qualityNote := fmt.Sprintf("已核验实测最大偏度：%d/%d；有值候选按最大偏度降序。", verified, len(a.reviewPlan.Clusters))
 	if verified == 0 {
-		qualityNote = "ACT 未提供逐单元偏度数值：仅按缺陷数量辅助排序，不冒充实测偏度。"
+		qualityNote = "ACT 未提供逐单元偏度：按异常单元数量辅助排序，不冒充实测偏度。"
+	}
+	if eqMode {
+		qualityNote = fmt.Sprintf("已核验实测最低 Element Quality：%d/%d；有值候选按最低值升序。", verified, len(a.reviewPlan.Clusters))
+		if verified == 0 {
+			qualityNote = "ACT 未提供逐单元 Element Quality：按低质量单元数量辅助排序，不冒充实测质量值。"
+		}
 	}
 	textAt(dc, qualityNote, x+16, 134, cw-32, 27, 13, 450, slate)
-	solid(dc, x, 184, cw, 516, white, 18)
+	solid(dc, x, 184, cw, 544, white, 18)
 	existing := a.reviewExistingControlCount
 	historyLabel := fmt.Sprintf("当前模型已有历史 Sizing %d 处（已读取）", existing)
 	if a.reviewPublishBlockedReason != "" {
@@ -366,7 +478,18 @@ func (a *state) drawCandidateReview(dc uintptr, x, cw int) {
 		textAt(dc, "资源预算：旧控件清单未核验，不计算累计值；发布已锁定。", x+30, 226, cw-60, 24, 12, 600, color(180, 75, 45))
 		textAt(dc, "只读模式：历史 Sizing 清单未能安全匹配当前模型；可查看候选，不可发布。", x+30, 250, cw-60, 18, 11, 650, color(180, 75, 45))
 	} else {
-		textAt(dc, fmt.Sprintf("资源代理：本次加已有约 %d / 120000（不是实际新增单元数）", a.reviewSelectedBudget), x+30, 226, cw-60, 24, 12, 450, slate)
+		remaining := reviewBudgetLimit - a.reviewExistingBudget
+		if remaining < 0 {
+			remaining = 0
+		}
+		selectedNew := a.reviewSelectedBudget - a.reviewExistingBudget
+		resourceText := fmt.Sprintf("资源代理：历史 %d + 本次 %d = %d；预警阈值 %d（非新增单元数）", a.reviewExistingBudget, selectedNew, a.reviewSelectedBudget, reviewBudgetLimit)
+		if a.reviewSelectedBudget > reviewBudgetLimit {
+			resourceText += fmt.Sprintf("；超出 %d · 须额外确认", a.reviewSelectedBudget-reviewBudgetLimit)
+		} else {
+			resourceText += fmt.Sprintf("；建议余量 %d", remaining)
+		}
+		textAt(dc, resourceText, x+30, 226, cw-60, 24, 12, 450, slate)
 	}
 	overlapNote := "逐项核查片间净空、几何作用域；默认不勾选任何候选。历史 Sizing 保留并计入累计预算。"
 	if a.reviewExistingNearDuplicate {
@@ -378,6 +501,11 @@ func (a *state) drawCandidateReview(dc uintptr, x, cw int) {
 	} else if a.reviewOverlapCount > 0 {
 		overlapNote = fmt.Sprintf("所选影响球存在 %d 对空间相交；请在详情中人工核查。", a.reviewOverlapCount)
 	}
-	textAt(dc, overlapNote, x+30, 606, cw-60, 21, 12, 500, slate)
-	textAt(dc, "仅创建/复用 Sizing，不清网格、不执行 GenerateMesh；未勾选候选会保留。", x+30, 679, cw-60, 20, 11, 450, slate)
+	if a.reviewConfirmDisabledReason != "" {
+		overlapNote = "暂不可发布：" + a.reviewConfirmDisabledReason + "（完整原因点「不能发布？」）"
+	} else if a.reviewOverlapCount == 0 && a.reviewExistingOverlapCount == 0 {
+		overlapNote = "已满足界面审核条件；最终 ACT 仍会核验历史身份、几何与重复影响域；代理量仅预警。"
+	}
+	textAt(dc, shorten(overlapNote, 86), x+30, 599, cw-60, 24, 12, 600, color(160, 91, 35))
+	textAt(dc, "批量选择仅勾选，不会自动发布；每事务批最多 6 个，旧 Sizing 原样保留。", x+30, 697, cw-60, 19, 11, 450, slate)
 }

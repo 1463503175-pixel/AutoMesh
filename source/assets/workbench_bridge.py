@@ -175,9 +175,20 @@ def dispatch_job(wb, system_name, worker_runner, *, explicitly_open_editor=False
     job_id = str(job_data.get('job_id',''))
     if not re.fullmatch(r'[0-9a-f]{32}',job_id):
         raise ValueError('Invalid job ID in submission')
+    logical_job_id = str(job_data.get('logical_job_id') or job_id)
+    attempt_id = str(job_data.get('attempt_id') or job_id)
+    attempt_number = int(job_data.get('attempt_number') or 1)
+    retry_of_job_id = str(job_data.get('retry_of_job_id') or '')
+    if not re.fullmatch(r'[0-9a-f]{32}', logical_job_id) or not re.fullmatch(r'[0-9a-f]{32}', attempt_id):
+        raise ValueError('Invalid logical job or attempt identity in submission')
+    if attempt_number < 1 or (retry_of_job_id and not re.fullmatch(r'[0-9a-f]{32}', retry_of_job_id)):
+        raise ValueError('Invalid attempt number or retry parent in submission')
     receipt_path = str(path.parent/('wb_dispatch_'+job_id+'.json')).replace('\\','/')
     receipt_py = json.dumps(receipt_path, ensure_ascii=True)
     job_py = json.dumps(job_id, ensure_ascii=True)
+    logical_job_py = json.dumps(logical_job_id, ensure_ascii=True)
+    attempt_py = json.dumps(attempt_id, ensure_ascii=True)
+    retry_of_py = json.dumps(retry_of_job_id, ensure_ascii=True)
     command = ("target=None\n"
                "target_count=0\n"
                "for sys in GetAllSystems():\n"
@@ -188,7 +199,7 @@ def dispatch_job(wb, system_name, worker_runner, *, explicitly_open_editor=False
                "mesh=target.GetContainer(ComponentName='Mesh')\n"
                "if mesh is None: raise Exception('Mesh container missing')\n"
                "import os, time, json\n"
-               "_receipt={'job_id':%s,'status':'wb_target_verified','stage':'Workbench target Mesh container verified','timestamp':time.time()}\n" % job_py +
+               "_receipt={'job_id':%s,'logical_job_id':%s,'attempt_id':%s,'attempt_number':%d,'retry_of_job_id':%s,'status':'wb_target_verified','stage':'Workbench target Mesh container verified','timestamp':time.time()}\n" % (job_py, logical_job_py, attempt_py, attempt_number, retry_of_py) +
                "_receipt_path=u%s\n" % receipt_py +
                "_receipt_tmp=_receipt_path+'.tmp'\n"
                "with open(_receipt_tmp,'w') as _r: _r.write(json.dumps(_receipt))\n"

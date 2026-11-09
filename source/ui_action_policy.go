@@ -11,6 +11,25 @@ func taskRequiresReferenceSize(phase string) bool {
 	}
 }
 
+// Worksheet alternatives 0/1 do not use interval inputs; rules 2/3 do.
+// Keep Element Quality in the same scan/identity gate as custom Skewness.
+func isCustomQualityRule(rule int) bool { return rule == 2 || rule == 3 }
+
+func markerRuleAction(rule int) string {
+	switch rule {
+	case 0:
+		return "mark"
+	case 1:
+		return "markwarning"
+	case 2:
+		return "markhighskew"
+	case 3:
+		return "markloweq"
+	default:
+		return ""
+	}
+}
+
 type workflowAvailability struct {
 	Ready, Busy, Connected, Ack, Selected, Scanned, HasMarker, HasPreview, HasReport, HasNamed, CanGenerate, SkewRangeValid bool
 }
@@ -28,9 +47,9 @@ func (s workflowAvailability) Allow(action string) bool {
 		return canConnect
 	case "scan":
 		return canRead
-	case "qualitycheck", "diagnose", "mark", "markwarning":
+	case "qualitycheck", "analysisdeep", "diagnose", "mark", "markwarning":
 		return canRead
-	case "markhighskew":
+	case "markhighskew", "markloweq":
 		return canScan && s.SkewRangeValid
 	case "warningplan":
 		return canScan && s.HasMarker

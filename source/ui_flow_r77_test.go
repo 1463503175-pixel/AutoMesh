@@ -5,21 +5,18 @@ import "testing"
 func TestQualityPageFollowsOperationalOrder(t *testing.T) {
 	for _, width := range []int{1100, 1120, 1240, 1366, 1600, 1920} {
 		c := plannedControls(width)
-		// Inspection and exact-range selection must be seen before the candidate
-		// preview and publish controls. Auxiliary diagnostics belong last.
-		if c["qualitycheck"].Y >= c["warningplan"].Y || c["markhighskew"].Y >= c["warningplan"].Y {
-			t.Errorf("%d: skew selection must precede preview", width)
+		// One rule selector and one execution button replace the three
+		// overlapping marker actions. The candidate flow remains sequential.
+		if c["markrule"].Y >= c["warningplan"].Y || c["markexecute"].Y >= c["warningplan"].Y {
+			t.Errorf("%d: target marking must precede preview", width)
 		}
 		if c["warningplan"].X >= c["warningview"].X || c["warningview"].X >= c["warningpublish"].X {
 			t.Errorf("%d: preview/view/publish horizontal order incorrect", width)
 		}
-		if c["warningplan"].Y >= c["htmlreport"].Y {
-			t.Errorf("%d: auxiliary report commands must be last", width)
+		if c["markrule"].X >= c["markexecute"].X || c["skewlow"].X >= c["skewhigh"].X {
+			t.Errorf("%d: marker rule/range order incorrect", width)
 		}
-		if c["skewlow"].X >= c["skewhigh"].X || c["skewhigh"].X >= c["markhighskew"].X {
-			t.Errorf("%d: lower/upper/select action order incorrect", width)
-		}
-		for _, k := range []string{"qualitycheck", "skewlow", "skewhigh", "markhighskew", "markwarning", "warningplan", "warningview", "warningpublish", "taskstatus", "htmlreport", "diagnose", "mark"} {
+		for _, k := range []string{"markrule", "markexecute", "skewlow", "skewhigh", "warningplan", "warningview", "warningpublish"} {
 			b := c[k]
 			if b.X+b.W > width-20 || b.Y+b.H > 690 {
 				t.Errorf("%d: quality button %s clipped: %+v", width, k, b)

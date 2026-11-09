@@ -63,9 +63,14 @@ func TestR80UserSelects15Of200WithoutAutoselect(t *testing.T) {
 	if len(second.CandidateIDs) != 15 || second.SelectedBudget != 3420 {
 		t.Fatalf("bad second receipt %+v", second)
 	}
-	// Simulate 32 GB budget protection before ACT task submission.
+	// Advisory proxy requires an additional explicit acknowledgement, never
+	// silently authorizes over-threshold publication.
 	if _, err = validateWarningSelection(p, next, published, 119000); err == nil {
-		t.Fatal("cumulative budget oversubscribed")
+		t.Fatal("missing budget-warning acknowledgement accepted")
+	}
+	withAck, err := validateWarningSelectionWithBudgetAck(p, next, published, 119000, true)
+	if err != nil || !withAck.BudgetWarningAcknowledged || withAck.SelectedBudget != 120710 {
+		t.Fatalf("valid explicit budget-warning acknowledgement rejected: %+v %v", withAck, err)
 	}
 }
 

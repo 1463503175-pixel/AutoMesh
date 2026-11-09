@@ -10,8 +10,8 @@ WORKER = os.path.join(os.path.dirname(__file__), 'assets', 'meshing_worker.py')
 with open(WORKER, 'r', encoding='utf-8') as f:
     tree = ast.parse(f.read())
 funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in
-         ('_selection_enum', 'validate_skew_range', 'mark_threshold_skew_elements')]
-assert len(funcs) == 3
+         ('_selection_enum', 'validate_skew_range', 'mark_threshold_quality_elements', 'mark_threshold_skew_elements', 'mark_threshold_element_quality_elements')]
+assert len(funcs) == 5
 unit = compile(ast.Module(body=funcs, type_ignores=[]), WORKER, 'exec')
 
 

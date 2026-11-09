@@ -20,12 +20,12 @@ MAX_WARNINGS = 64
 # Full ACT element / node traversal is bounded independently for 32 GB hosts.
 MAX_ANALYSIS_ELEMENTS = 4096
 # At most 6 active changes are processed per transaction batch. The whole
-# reviewed plan can contain several bounded batches (one user action), subject
-# to the ORIGINAL total cell-proxy cap and the 32 GB memory guard.
+# reviewed plan can contain several bounded batches (one user action).
+# Cumulative cell proxy is advisory; geometry and per-batch guards remain.
 MAX_BATCH_SPHERES = 6
 MAX_SPHERES = 4096  # analysis record hard cap, NOT a publish limit
 MAX_RADIUS_MM = 12.0
-MAX_CELL_PROXY = 120000.0  # cumulative owned + newly selected per project/mesh
+MAX_CELL_PROXY = 120000.0  # advisory cumulative proxy; each giant single sphere remains invalid
 
 
 def _warning_path(filename):
@@ -179,8 +179,11 @@ def warning_register_marker(summary, state):
             'mesh_count': int(Model.Mesh.Elements), 'groups': tagged,
             'worksheet_count': summary.get('worksheet_count', 0),
             'selection_source':summary.get('selection_source','official_quality_warning'),
+            'metric':summary.get('metric','Skewness'),
             'skewness_threshold':summary.get('threshold'),
-            'range_min':summary.get('range_min'),'range_max':summary.get('range_max')}
+            'range_min':summary.get('range_min'),'range_max':summary.get('range_max'),
+            'requested_range_max':summary.get('requested_range_max'),
+            'auto_limited':bool(summary.get('auto_limited'))}
     write(_warning_path(_WARNING_MARKER), info)
     return info
 
@@ -256,11 +259,13 @@ def _read_warning_elements(state):
                         direct.add(int(value))
                 except Exception:
                     pass
+            mapped_faces = set()
             for prop in ('GeoEntityId','GeometryEntityId','FaceId'):
                 try:
                     val = int(getattr(element,prop))
                     if val in face_to_body:
                         direct.add(face_to_body[val])
+                        mapped_faces.add(val)
                 except Exception:
                     pass
             by_node = []
@@ -294,10 +299,23 @@ def _read_warning_elements(state):
                         skew=v
             except Exception:
                 pass
+            # An ElementQuality worksheet identifies the affected element IDs,
+            # but does not imply exact per-element values. Read only a real
+            # ACT property when exposed; never infer quality from the interval.
+            element_quality = None
+            if marker.get('metric') == 'ElementQuality':
+                try:
+                    value = getattr(element, 'ElementQuality')
+                    if not callable(value) and not isinstance(value, bool):
+                        v = float(value)
+                        if not math.isnan(v) and not math.isinf(v) and 0 <= v <= 1:
+                            element_quality = v
+                except Exception:
+                    pass
             observations.append({'id':eid,'body':body_id,'xyz_mm':centroid,
-                                 'skewness':skew,
-
+                                 'skewness':skew, 'element_quality':element_quality,
                                  'span_mm':span,'node_ids':node_ids,
+                                 'mapped_face_ids':sorted(mapped_faces),
                                  'mapping_method':method})
         except (KeyboardInterrupt, SystemExit):
             raise
@@ -311,7 +329,9 @@ def _read_warning_elements(state):
     digest_payload = ['%s:%s:%s:%s:%s' % (o['id'],o['body'],
         ','.join('%.9g' % n for n in o['xyz_mm']),
         ','.join(str(v) for v in o['node_ids']),
-        ('%.12g' % o['skewness'] if o.get('skewness') is not None else 'unknown'))
+        ('%.12g' % o['skewness'] if o.get('skewness') is not None else 'unknown') + ':' +
+        ('%.12g' % o['element_quality'] if o.get('element_quality') is not None else 'unknown') + ':' +
+        ','.join(str(v) for v in o.get('mapped_face_ids', [])))
         for o in observations]
     digest_payload.extend('rejected:%s:%s' % (r['element_ids'][0],r['reason']) for r in rejected)
     digest = hashlib.sha256(('|'.join(digest_payload)).encode('utf-8')).hexdigest()
@@ -399,7 +419,7 @@ def _split_component(component):
     return partitions
 
 
-def _hotspot_candidates(observations, body_size_caps=None, diagnosis=None, fingerprint=''):
+def _hotspot_candidates(observations, body_size_caps=None, diagnosis=None, fingerprint='', metric='Skewness'):
     """Enumerate ALL individually safe candidates; do not spend the publish
     budget during analysis, since the operator decides which ones to select.
     """
@@ -431,10 +451,14 @@ def _hotspot_candidates(observations, body_size_caps=None, diagnosis=None, finge
             continue
         known=[float(x['skewness']) for x in cl if x.get('skewness') is not None]
         complete=len(known)==len(cl)
+        eq_known=[float(x['element_quality']) for x in cl if x.get('element_quality') is not None]
+        eq_complete=len(eq_known)==len(cl)
         # Candidate identity cannot depend on list position or sort order.
         id_basis='%s|%s|%s' % (fingerprint,body,','.join(str(n) for n in ids))
         candidate_id=hashlib.sha256(id_basis.encode('utf-8')).hexdigest()[:20]
+        observed_faces = sorted(set(face_id for item in cl for face_id in item.get('mapped_face_ids', [])))
         output.append({'candidate_id':candidate_id,'body_id':body,
+                       'mapped_face_ids':observed_faces[:12],
                        'centre_mm':[round(x,6) for x in centre],
                        'radius_mm':round(radius,4),'element_size_mm':round(target,4),
                        'element_ids':ids,'observed_max_span_mm':round(max_span,4),
@@ -443,14 +467,25 @@ def _hotspot_candidates(observations, body_size_caps=None, diagnosis=None, finge
                        'skewness_mean':(sum(known)/len(known)) if complete else None,
                        'skewness_verified':complete,
                        'skewness_source':('ACT:IElement.Skewness' if complete else 'unavailable'),
+                       'element_quality_min':min(eq_known) if eq_complete else None,
+                       'element_quality_mean':(sum(eq_known)/len(eq_known)) if eq_complete else None,
+                       'element_quality_verified':eq_complete,
+                       'element_quality_source':('ACT:IElement.ElementQuality' if eq_complete else 'unavailable'),
                        'scope_kind':'GeometryBody',
                        'mapping_methods':sorted(set(x.get('mapping_method','unknown') for x in cl)),
                        'wafer_gap_clearance':'manual_review_required'})
     # Verified actual maxima first, otherwise explicit "unavailable", then
     # stable diagnostic priority. Never manufacture an exact ranking from IDs.
-    output.sort(key=lambda c:(c['skewness_max'] is None,
-                      -(c['skewness_max'] if c['skewness_max'] is not None else 0),
-                      -len(c['element_ids']),c['body_id'],c['candidate_id']))
+    if metric == 'ElementQuality':
+        # Lowest *verified* element quality first. Unknown values remain
+        # unknown and are ordered by defect count only, never by fake quality.
+        output.sort(key=lambda c:(c['element_quality_min'] is None,
+                         c['element_quality_min'] if c['element_quality_min'] is not None else 0,
+                         -len(c['element_ids']),c['body_id'],c['candidate_id']))
+    else:
+        output.sort(key=lambda c:(c['skewness_max'] is None,
+                          -(c['skewness_max'] if c['skewness_max'] is not None else 0),
+                          -len(c['element_ids']),c['body_id'],c['candidate_id']))
     for i,c in enumerate(output):c['batch_index']=i//MAX_BATCH_SPHERES+1
     return output,sum(c['cell_budget_proxy'] for c in output)
 
@@ -538,7 +573,7 @@ def preview_warning_refinement(state):
     caps=_existing_body_size_caps(state)
     emit_progress(86, '空间分簇与预算审核', '按几何 Body、邻接关系和影响半径生成独立候选')
     rejected=list(marker.get('_element_rejections',[]))
-    groups,proxy=_hotspot_candidates(observations,caps,rejected,state['fingerprint'])
+    groups,proxy=_hotspot_candidates(observations,caps,rejected,state['fingerprint'],marker.get('metric','Skewness'))
     # No safe candidate is NOT a failed task. Record why, without creating Sizing.
     # The caller can open this report while the Meshing mesh stays untouched.
     covered=set(i for x in groups for i in x['element_ids'])
@@ -551,7 +586,8 @@ def preview_warning_refinement(state):
               'covered_count':len(covered),'uncovered_count':len(observations)+len(marker.get('_element_rejections',[]))-len(covered),
               'clusters':groups,'rejected_groups':rejected,'total_cell_proxy':int(round(proxy)),
               'candidate_count':len(groups),'candidate_max_skew_verified':sum(1 for g in groups if g['skewness_verified']),
-              'source':('Named Selection Worksheet: Mesh Element Skewness %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_skewness_range' else 'ANSYS Mesh Quality Worksheet element Named Selection'),
+              'source':('Named Selection Worksheet: Mesh Element ElementQuality %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_element_quality_range' else ('Named Selection Worksheet: Mesh Element Skewness %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_skewness_range' else 'ANSYS Mesh Quality Worksheet element Named Selection')),
+              'quality_metric':marker.get('metric','Skewness'),
               'skewness_threshold':marker.get('skewness_threshold'),
               'notes':u'完整列出所有可分析局部候选（不按 24 组截断）。发布时才审核选中集合的累计预算，每批最多 6 个；真实偏度不可用则明确显示未知；晶圆间净空仍需逐候选人工确认。'
              }
@@ -825,6 +861,22 @@ def _reject_near_duplicate_spheres(chosen, old_controls):
                 raise RuntimeError(u'所选区域与现有或同批球形影响域几乎重合（%s, %s），可能重复细化。请只保留其中一个或人工调整方案。' % (a[3],b[3]))
 
 
+def _check_budget_warning_approval(cumulative_proxy, receipt):
+    """ACT-side independent acknowledgement for a verified live proxy.
+
+    Return True only for operator-approved over-threshold publication. Never
+    infer consent from an archived plan, old receipt or a near-120000 value.
+    """
+    if not isinstance(cumulative_proxy,(int,float)) or math.isnan(cumulative_proxy) or math.isinf(cumulative_proxy) or cumulative_proxy<0:
+        raise RuntimeError(u'当前 ACT 预算代理值异常，拒绝发布。')
+    if cumulative_proxy<=MAX_CELL_PROXY:
+        return False
+    if not isinstance(receipt,dict) or receipt.get('budget_warning_acknowledged') is not True:
+        raise RuntimeError(u'实际 ACT 预算代理 %.0f 超过建议预警值 %.0f，缺少本轮额外人工确认；未创建 Sizing。' %
+                           (cumulative_proxy, MAX_CELL_PROXY))
+    return True
+
+
 def publish_warning_refinement(state):
     """One operator-approved selection; 6 controls per transactional batch.
 
@@ -846,7 +898,7 @@ def publish_warning_refinement(state):
     # Recompute without any active-selection budget to prove the candidate
     # geometry and ordering are identical to the approved read-only preview.
     caps=_existing_body_size_caps(state)
-    all_candidates,_=_hotspot_candidates(observations,caps,fingerprint=state['fingerprint'])
+    all_candidates,_=_hotspot_candidates(observations,caps,fingerprint=state['fingerprint'],metric=plan.get('quality_metric','Skewness'))
     if all_candidates!=plan.get('clusters'):
         raise RuntimeError(u'候选几何或质量值与预览不一致，禁止使用旧审核结果。')
     chosen_ids=_load_operator_selection(plan,state)
@@ -884,13 +936,18 @@ def publish_warning_refinement(state):
     old_budget=sum(_control_proxy(control) for control,cs in live)
     new_budget=sum(float(c['cell_budget_proxy']) for c in chosen)
     _reject_near_duplicate_spheres(chosen,owner.get('controls',[]))
-    if old_budget+new_budget>MAX_CELL_PROXY:
-        raise RuntimeError(u'累计预算超限：旧控件约 %.0f + 所选约 %.0f > %.0f。请减少本次勾选，未选候选继续保留。' %
-                           (old_budget,new_budget,MAX_CELL_PROXY))
+    cumulative_proxy=old_budget+new_budget
+    # Re-read operator receipt after verifying live ACT controls. The old
+    # schema stays compatible below threshold, but old receipts MUST NOT
+    # silently authorize over-threshold publication.
+    budget_receipt=read(_warning_path(_WARNING_SELECTION))
+    budget_ack=_check_budget_warning_approval(cumulative_proxy,budget_receipt)
     preflight=_warning_path('warning_publish_preflight.json')
     write(preflight,{'plan_id':plan['plan_id'],'selected_candidate_ids':chosen_ids,
                      'selected_count':len(chosen),'cumulative_cell_budget_proxy':round(old_budget+new_budget),
-                     'status':'preflight_ok','mesh_elements':int(Model.Mesh.Elements)})
+                     'status':'preflight_ok','budget_warning':cumulative_proxy>MAX_CELL_PROXY,
+                     'budget_warning_acknowledged':budget_ack,
+                     'mesh_elements':int(Model.Mesh.Elements)})
     # Mutation begins only after all constraints and filesystem checks pass.
     if not owner:
         owner={'schema_version':3,'project':state['project'],'fingerprint':state['fingerprint'],

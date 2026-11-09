@@ -54,7 +54,10 @@ func (w Workspace) recoverWarningPreviewArtifact(lease Task) (Result, bool, erro
 	if err != nil {
 		return Result{}, false, err
 	}
-	result := Result{JobID: lease.JobID, Phase: lease.Phase, Status: "ok", Summary: summary}
+	lease = normalizeTaskIdentity(lease)
+	result := Result{JobID: lease.JobID, LogicalJobID: lease.LogicalJobID,
+		AttemptID: lease.AttemptID, AttemptNumber: lease.AttemptNumber, RetryOfJobID: lease.RetryOfJobID,
+		VerificationStatus: "verified", Phase: lease.Phase, Status: "ok", Summary: summary}
 	if err := w.RecordWarningPreview(result, &snapshot); err != nil {
 		return Result{}, false, err
 	}
@@ -75,8 +78,11 @@ func (w Workspace) recoverTerminalProgress(lease Task) (Result, bool, error) {
 	if r, ok := w.terminalResultForJob(lease.JobID); ok {
 		return r, true, nil
 	}
+	lease = normalizeTaskIdentity(lease)
 	progress, err := readJSON[ActProgress](w.path("job_progress_" + lease.JobID + ".json"))
-	if err != nil || progress.JobID != lease.JobID || progress.Timestamp <= 0 {
+	if err != nil || progress.JobID != lease.JobID || progress.Timestamp <= 0 ||
+		(progress.AttemptID != "" && progress.AttemptID != lease.AttemptID) ||
+		(progress.LogicalJobID != "" && progress.LogicalJobID != lease.LogicalJobID) {
 		return Result{}, false, nil
 	}
 	age := time.Since(time.Unix(0, int64(progress.Timestamp*1e9)))
@@ -118,7 +124,14 @@ func (w Workspace) recoverTerminalProgress(lease Task) (Result, bool, error) {
 	if status == "ok" && len(recoveredSummary) > 0 {
 		recoveredStage = "recovered_from_job_bound_warning_plan"
 	}
-	r := Result{JobID: lease.JobID, Phase: lease.Phase, Status: status,
+	lease = normalizeTaskIdentity(lease)
+	verificationStatus := "pending"
+	if status == "ok" && recoveredStage == "recovered_from_job_bound_warning_plan" {
+		verificationStatus = "verified"
+	}
+	r := Result{JobID: lease.JobID, LogicalJobID: lease.LogicalJobID,
+		AttemptID: lease.AttemptID, AttemptNumber: lease.AttemptNumber, RetryOfJobID: lease.RetryOfJobID,
+		VerificationStatus: verificationStatus, Phase: lease.Phase, Status: status,
 		Stage: recoveredStage, Summary: recoveredSummary, Error: detail}
 	// Only repair the AutoMesh workspace. This does not send commands to
 	// Workbench, change controls, clear a mesh, or inspect/terminate a process.
@@ -138,5 +151,8 @@ func (w Workspace) recoverTerminalProgress(lease Task) (Result, bool, error) {
 	// The immutable per-job receipt is authoritative. A generic last_result
 	// replacement failure must not keep the completed task locked forever.
 	_ = writeJSON(w.path("last_result.json"), r)
+	if err := w.recordTaskResult(lease, r); err != nil {
+		return Result{}, false, fmt.Errorf("terminal receipt recovered but task history could not be updated: %w", err)
+	}
 	return r, true, nil
 }

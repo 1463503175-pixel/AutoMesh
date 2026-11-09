@@ -317,3 +317,22 @@ func TestNewReadOnlyQualityAndChineseOperationsCanBeSubmitted(t *testing.T) {
 		}
 	}
 }
+
+func TestSubmitForSystemPersistsMeshIdentity(t *testing.T) {
+	w := Workspace{Dir: t.TempDir()}
+	task, err := w.SubmitForSystem("FFF", "inspect", nil, nil, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.MeshSystem != "FFF" {
+		t.Fatalf("returned task lost Mesh system: %+v", task)
+	}
+	job, err := w.LoadTask()
+	if err != nil || job.MeshSystem != "FFF" {
+		t.Fatalf("job.json Mesh system = %q, err=%v", job.MeshSystem, err)
+	}
+	lease, err := readJSON[Task](w.taskLeasePath())
+	if err != nil || lease.MeshSystem != "FFF" {
+		t.Fatalf("active task Mesh system = %q, err=%v", lease.MeshSystem, err)
+	}
+}

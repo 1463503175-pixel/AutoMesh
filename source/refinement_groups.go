@@ -111,7 +111,7 @@ func recommendNamedSizes(s *Snapshot, referenceMM float64) []NamedAdvice {
 	result := make([]NamedAdvice, 0, len(s.Named))
 	for _, n := range s.Named {
 		name := strings.TrimSpace(n.Name)
-		if name == "" || strings.EqualFold(name, "inlet") || strings.EqualFold(name, "outlet") || len(n.IDs) == 0 {
+		if name == "" || len(n.IDs) == 0 {
 			continue
 		}
 		values := make([]float64, 0, len(n.IDs))
@@ -149,6 +149,13 @@ func recommendNamedSizes(s *Snapshot, referenceMM float64) []NamedAdvice {
 		if valid >= 50 && curveCount == 0 && area > global*global {
 			proposal = math.Min(proposal, global*.65) // repeated large faces might still be significant
 		}
+		// Boundary suggestions depend on actual CAD face areas and the current
+		// global size; no fixed inlet/outlet mm value may be imposed.
+		// Solver boundary names, scopes, and SendToSolver are never changed.
+		boundary := strings.EqualFold(name, "inlet") || strings.EqualFold(name, "outlet")
+		if boundary {
+			proposal = math.Min(global*0.75, math.Sqrt(area)*0.25)
+		}
 		proposal = roundedSize(minmax(proposal, 0.5, global))
 		if proposal < 0.5 {
 			proposal = 0.5
@@ -157,8 +164,12 @@ func recommendNamedSizes(s *Snapshot, referenceMM float64) []NamedAdvice {
 		// are candidates for automatic activation. Others require review.
 		confidentSmall := strings.HasPrefix(name, "AM_") && curveCount > valid*3/4 &&
 			area <= global*global && proposal <= global*.5
+		reason := fmt.Sprintf("面积中位数 %.2f mm²；%d/%d 个解析曲面；尺寸仅为初步建议", area, curveCount, valid)
+		if boundary {
+			reason = fmt.Sprintf("出入口真实面面积中位数 %.2f mm²，参考当前全局尺寸 %.2f mm；建议 %.2f mm 可逐项调整，默认不自动发布", area, global, proposal)
+		}
 		result = append(result, NamedAdvice{Name: name, MM: proposal, Eligible: confidentSmall,
-			Reason: fmt.Sprintf("面积中位数 %.2f mm²；%d/%d 个解析曲面；尺寸仅为初步建议", area, curveCount, valid),
+			Reason: reason,
 			Count:  valid, MedianAreaMM2: area})
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -171,13 +182,32 @@ func recommendNamedSizes(s *Snapshot, referenceMM float64) []NamedAdvice {
 }
 func groupAdvice(advice []NamedAdvice, sizes map[string]float64) []SizeBucket {
 	groups := []SizeBucket{}
+	// Keep the two solver boundary groups distinct and visible at the top.
+	// Their recommendations differ with actual area, and editing a generic
+	// small-face bucket must never change inlet/outlet by accident.
 	for _, a := range advice {
+		if !strings.EqualFold(a.Name, "inlet") && !strings.EqualFold(a.Name, "outlet") {
+			continue
+		}
+		mm := a.MM
+		if v, ok := sizes[a.Name]; ok && v >= 0.35 {
+			mm = v
+		}
+		groups = append(groups, SizeBucket{Key: "boundary:" + strings.ToLower(a.Name), MM: mm, Members: []string{a.Name}})
+	}
+	for _, a := range advice {
+		if strings.EqualFold(a.Name, "inlet") || strings.EqualFold(a.Name, "outlet") {
+			continue
+		}
 		mm := a.MM
 		if v, ok := sizes[a.Name]; ok && v >= 0.35 {
 			mm = v
 		}
 		target := -1
 		for i := range groups {
+			if strings.HasPrefix(groups[i].Key, "boundary:") {
+				continue
+			}
 			if math.Abs(groups[i].MM-mm)/math.Max(groups[i].MM, mm) <= 0.24 {
 				target = i
 				break
@@ -191,6 +221,14 @@ func groupAdvice(advice []NamedAdvice, sizes map[string]float64) []SizeBucket {
 	}
 	for i := range groups {
 		n := groups[i].MM
+		if strings.HasPrefix(groups[i].Key, "boundary:") {
+			role := "进气边界 inlet"
+			if strings.EqualFold(groups[i].Members[0], "outlet") {
+				role = "出气边界 outlet"
+			}
+			groups[i].Label = fmt.Sprintf("%s · 可调建议 %.3g mm", role, n)
+			continue
+		}
 		label := "局部细化组"
 		if n <= 2 {
 			label = "细网格组"
