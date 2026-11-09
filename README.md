@@ -1,119 +1,148 @@
 <div align="center">
+  <img src="docs/assets/automesh-hero.svg" width="100%" alt="AutoMesh — precision mesh quality and refinement workflow" />
 
-# AutoMesh R8.1
+  <br />
 
-### 让 ANSYS 网格质量诊断与局部优化更简单
+  <p><strong>让网格优化从反复试错，变成可追踪的工程流程。</strong></p>
+  <p>连接已有 ANSYS 工程，定位劣质单元，审核局部网格控制，记录每一轮优化的质量变化。</p>
 
-**连接已有工程 · 找到问题单元 · 审核局部 Sizing · 对比优化结果**
+  <p>
+    <img src="https://img.shields.io/badge/Windows-x64-18263B?style=flat-square&logo=windows11&logoColor=E6F2FA" alt="Windows x64" />
+    <img src="https://img.shields.io/badge/ANSYS-2024%20R2-18263B?style=flat-square&logoColor=E6F2FA" alt="ANSYS 2024 R2" />
+    <img src="https://img.shields.io/badge/R8.1-Release%20Candidate-395E65?style=flat-square" alt="R8.1 Release Candidate" />
+  </p>
 
-适用于 **Windows x64 · ANSYS Workbench / Meshing 2024 R2**
-
-**R8.1 RC · 发布候选版 · Windows / ANSYS 实机待验收**
-
-[**获取 Windows 程序**](app/AutoMesh.exe)　·　[**新手快速上手**](docs/GETTING_STARTED.md)　·　[**查看源码**](source/)
-
+  <p>
+    <a href="app/AutoMesh.exe"><strong>获取 Windows 程序</strong></a>
+    &nbsp;&nbsp; · &nbsp;&nbsp;
+    <a href="docs/GETTING_STARTED.md"><strong>5 分钟快速上手</strong></a>
+    &nbsp;&nbsp; · &nbsp;&nbsp;
+    <a href="source/"><strong>浏览源码</strong></a>
+  </p>
 </div>
 
 ---
 
-## 第一次使用？从这里开始
+## Overview · 项目简介
 
-**AutoMesh 是什么？** 它是一款连接**你已经打开的 ANSYS Workbench / Meshing** 的辅助工具：检查现有网格质量、定位异常单元、建议局部网格尺寸、人工审核并发布 Sizing，最后比较优化前后的质量。**不需要为了使用它重新建立工程。**
+**AutoMesh** 是一款面向 **ANSYS Workbench / Meshing** 的 Windows 原生辅助工具。它连接已经打开的工程，将质量检测、异常定位、局部尺寸建议、人工审核和历史对比组织到一套工作流中。
 
-### 5 步开始使用
+它**不是另一个网格生成器**：AutoMesh 负责帮助你决定 *哪里需要调整、为什么调整、调整后是否改善*；是否重新划分网格，仍由用户在 Meshing 中决定。
 
-| 步骤 | 要做什么 | 在哪里操作 |
-|:---:|---|---|
-| **01** | 打开已有 Workbench 工程和目标 Meshing 编辑器 | ANSYS |
-| **02** | 连接当前工程，选择正确的 Mesh 系统 | **连接工程** |
-| **03** | 同步工程，点击 **更新质量** 查看网格指标 | 顶部工具栏 / **质量报告** |
-| **04** | 选择命名组尺寸，或标记高偏度 / 低 Element Quality 单元 | **局部细化** / **质量报告** |
-| **05** | 检查影响域后人工审核 Sizing；需要时自行重划网格，再做前后对比 | **候选审核** / **质量分析** |
+## Workflow · 从发现问题到验证改善
 
-> [!TIP]
-> **第一次只想看看软件是否可用？** 先做到第 03 步即可。查看已有网格质量不等于发布 Sizing，也不会自动 GenerateMesh。
-
-[**阅读带操作说明的新手指南 →**](docs/GETTING_STARTED.md)
-
-## 你想做哪一种优化？
-
-| | **A · 已命名的几何区域** | **B · 网格质量异常区域** |
-|---|---|---|
-| **适用** | `inlet` / `outlet`、孔、挡板、晶圆面 | 高偏度、低 Element Quality、尖角附近的畸形单元 |
-| **操作顺序** | 连接工程 → 局部细化 → 设置尺寸 → 审核发布 | 更新质量 → 标记区间 → 生成方案 → 查看影响域 → 人工审核 |
-| **自动化能力** | 自动 / 手动命名区域均可参与；入口和出口独立设置尺寸 | 异常位置分簇、候选影响域、历史 Sizing 重叠诊断 |
-| **需要人工确认** | 原有控制、几何范围和尺寸 | 球形范围、局部间隙、是否确实适合细化 |
-
-## 一张图看懂工作流程
-
-```mermaid
-flowchart TD
-    A["打开现有 Workbench / Meshing"] --> B["AutoMesh 连接并选择 Mesh"]
-    B --> C["同步工程 / 按需扫描几何"]
-    C --> D["更新网格质量"]
-    D --> E{"优化入口"}
-    E --> F["已有 Named Selection<br/>inlet / outlet / 其他几何"]
-    E --> G["偏度或 Element Quality<br/>异常单元区间标记"]
-    F --> H["配置局部尺寸"]
-    G --> I["分簇并查看影响域"]
-    H --> J["核验历史控制与人工审核"]
-    I --> J
-    J --> K["发布 Sizing"]
-    K --> L["用户自行决定是否重新划分网格"]
-    L --> M["重新检测 · 历史对比"]
+```text
+01  CONNECT        02  DIAGNOSE        03  REFINE         04  REVIEW        05  COMPARE
+    连接现有工程   →   读取真实网格质量   →   定位局部问题   →   人工审核 Sizing   →   历史前后对比
 ```
 
-> [!IMPORTANT]
-> AutoMesh 的**发布 Sizing 不会自动 GenerateMesh**。已有历史 Sizing、几何身份检查、人工确认和重复影响域保护仍需遵守。累计预算 **120000 是预警值，不是网格单元数硬上限**；超阈值需额外确认。
-
-## 六个页面分别负责什么？
-
-| 页面 | 主要用途 |
+| 工作阶段 | AutoMesh 做什么 |
 |---|---|
-| **概览** | 一眼查看工程连接、网格质量与任务状态 |
-| **连接工程** | 连接已有 Workbench、选择 Mesh 系统 |
-| **局部细化** | 几何扫描、命名组尺寸及 Sizing 管理 |
-| **质量报告** | 查看质量、标记异常单元、生成局部方案 |
-| **质量分析** | 多轮历史、优化前后对比、统计及导出 |
-| **设置与维护** | 诊断、数据目录与维护操作 |
+| **Connect** | 复用现有 Workbench / Meshing，会话与 Mesh 身份同步 |
+| **Diagnose** | 读取 Skewness、Element Quality 等可用的原生质量指标 |
+| **Refine** | 标记异常单元、生成空间分簇与局部影响域建议 |
+| **Review** | 检查已有 Sizing、作用域和风险，人工确认后发布控制 |
+| **Compare** | 保存任务快照，查看质量趋势、优化前后差异并导出报告 |
 
-### 这些指标怎么看？
+> **最短路径：** 首次使用只需要打开已有 Workbench 工程 → 启动 AutoMesh → 连接 Mesh → 点击 **更新质量**。不必一开始就发布任何 Sizing。
 
-| 质量指标 | 越好的一侧 | 能帮你判断什么 |
-|---|---|---|
-| **Skewness 偏度** | 越接近 **0** 越好 | 识别严重畸变单元 |
-| **Element Quality** | 越接近 **1** 越好 | 判断单元形状质量，需兼看最小与平均 |
-| **Orthogonal Quality** | 越接近 **1** 越好 | 辅助评价 CFD 网格正交性 |
-| **P95 / 高偏度数量** | 结合分布判断 | 查看最差的一批单元是否真的减少 |
+## Capabilities · 核心能力
 
-> 某些原生 ACT 质量接口尚待实机验证。数值显示“未取得”表示没有可靠数据，**不代表 0**；不会用偏度或平均值推算其他真实指标。
+### 01 / 识别真正需要优化的区域
 
-## 下载、更新与源码
+针对 **Skewness（偏度）** 和 **Element Quality（单元质量）**，支持自定义区间标记、异常单元分簇、局部影响域及小特征几何诊断。遇到没有可靠数据的质量指标，会标明“未取得”及其来源限制，而不是估算。
 
-| 你需要 | 入口 |
-|---|---|
-| **直接使用 Windows 程序** | [AutoMesh.exe](app/AutoMesh.exe) |
-| **查看完整 R8.1 Go / Python / ACT 源码** | [source/](source/) |
-| **保存本次原始源码与 EXE ZIP** | [R8.1 完整归档](releases/AutoMesh_R8_1_RC_20261109_B4E98F95E6AEB8E68B8AE5BA85E5A3Sizing_AEE6B4BAE781.zip) |
-| **了解当前测试与待验收项** | [开发检查点](docs/releases/R8.1_RC_20261109_质量数据与手动出入口Sizing_检查点.md) |
-| **检查文件完整性** | [SHA-256 清单](SHA256SUMS.txt) |
+### 02 / 让局部 Sizing 可控、可核验
 
-**升级提示：** 关闭旧 AutoMesh 后更新 EXE，**不要删除** `C:\ProgramData\AutoMesh2024R2\Data`。这里可能保存历史任务、质量快照和 Sizing 记录。
+手动命名的 **`inlet` / `outlet`** 与自动识别的 Named Selection 均可参与尺寸推荐与发布。入口和出口可使用不同尺寸；现有手动 Sizing、历史控制、重叠作用域和失效引用需要在发布前核对。
+
+### 03 / 每轮修改都有迹可循
+
+统一查看工程、任务、网格质量和历史快照。分析中心可对比优化前后的最大偏度、最小及平均 Element Quality 等真实指标；几何身份或采集口径无法核验时，明确区分正式对比与参考差值。
+
+## Quick start · 现在开始
+
+| 步骤 | 操作 | 位置 |
+|:---:|---|---|
+| **1** | 打开已有 Workbench 工程及目标 Meshing 编辑器 | ANSYS |
+| **2** | 启动 AutoMesh，连接现有会话并选择 Mesh 系统 | **连接工程** |
+| **3** | 同步工程，点击 **更新质量**，核对质量与数据来源 | 顶部工具栏 / **质量报告** |
+| **4** | 对已命名的区域设置尺寸，或标记高偏度 / 低单元质量区域 | **局部细化** / **质量报告** |
+| **5** | 查看影响域、审核 Sizing；如有重划网格，再比较结果 | **候选审核** / **质量分析** |
+
+[**打开完整新手指南 →**](docs/GETTING_STARTED.md)
 
 <details>
-<summary><strong>为什么有些按钮是灰色、为什么质量数据未取得？</strong></summary>
+<summary><strong>六个页面如何分工？</strong></summary>
 
-请先检查工程身份、完整几何扫描、目标勾选、已有 Sizing 冲突、人工审核和任务状态。未取得的质量指标可能涉及 Meshing ACT 接口限制。详细排查见 [新手指南 · 常见问题](docs/GETTING_STARTED.md#5-常见问题)。
+| 页面 | 负责什么 |
+|---|---|
+| 概览 | 工程状态、网格质量和任务摘要 |
+| 连接工程 | 连接现有 Workbench、选择目标 Mesh |
+| 局部细化 | 完整几何扫描、Named Selection、尺寸与 Sizing |
+| 质量报告 | 质量读取、异常单元标记、生成局部方案 |
+| 质量分析 | 多轮快照、趋势、前后对比与导出 |
+| 设置与维护 | 运行诊断、数据目录与维护 |
 
 </details>
 
 <details>
-<summary><strong>已经有历史 Sizing，还能继续优化吗？</strong></summary>
+<summary><strong>两种局部优化方式有什么区别？</strong></summary>
 
-可以继续诊断和提交候选，但要核对历史影响域、几何身份及空间重叠。每批最多 6 个；累计资源代理超过建议阈值时需要额外人工确认。预算代理不是实际单元数，也不是内存预测。
+**几何区域路线：** 已有 `inlet`、`outlet`、孔、晶圆面等 Named Selection → 核对覆盖 → 设置单项/整组尺寸 → 审核发布。
+
+**质量缺陷路线：** 偏度或 Element Quality 区间标记 → 局部分簇 → 影响域检查 → 候选勾选 → 人工审核发布。
+
+后者并不意味着劣质单元一定适合继续细化；尖角、短边和薄壁区域仍需检查实际几何与网格方法。
+
+</details>
+
+## Principles · 工程安全边界
+
+> [!IMPORTANT]
+> **发布 Sizing ≠ 自动重新生成网格。** AutoMesh 不应自动执行 `GenerateMesh`，也不应未经确认删除、覆盖或停用已有 Sizing。
+
+- **复用现有模型：** 不自动新建 Workbench 工程，不随意重扫有效几何。
+- **人工审核优先：** 候选区域、历史身份、几何作用域和近重合控制均需通过核验；单批最多发布 6 个。
+- **资源预警而非死板拦截：** 累计预算代理 `120000` 为提醒阈值，超过时需额外确认；它不是实际单元数或内存限制。
+- **升级不丢历史：** 只替换程序，保留 `C:\ProgramData\AutoMesh2024R2\Data` 中的质量快照和任务记录。
+
+## Get the project · 下载与开发
+
+| 资源 | 说明 |
+|---|---|
+| **[AutoMesh.exe](app/AutoMesh.exe)** | 当前 Windows x64 GUI 发布候选程序 |
+| **[完整源码](source/)** | Go 原生桌面 UI、Python 桥接、Meshing ACT Worker 与测试 |
+| **[R8.1 源码归档 ZIP](releases/AutoMesh_R8_1_RC_20261109_B4E98F95E6AEB8E68B8AE5BA85E5A3Sizing_AEE6B4BAE781.zip)** | 本轮已校验的原始归档 |
+| **[新手指南](docs/GETTING_STARTED.md)** | 首次连接、两条优化路线、常见问题 |
+| **[开发检查点](docs/releases/R8.1_RC_20261109_质量数据与手动出入口Sizing_检查点.md)** | 本轮变更、定向测试与待验证项目 |
+| **[SHA-256 清单](SHA256SUMS.txt)** | 仓库文件完整性核验 |
+
+<details>
+<summary><strong>技术架构 / Technical stack</strong></summary>
+
+```text
+AutoMesh.exe           Windows 原生 UI · Go
+      │
+      ▼
+Python / PyWorkbench   连接现有 Workbench 脚本会话
+      │
+      ▼
+Meshing ACT Worker     真实网格读取 · 标记 · 分簇 · 安全审核
+      │
+      ▼
+ANSYS Named Selection / Sizing
+      │
+      ▼
+Job receipt · Quality history · Reports
+```
 
 </details>
 
 ---
 
-<sub>**版本与验收：** 当前代码为 R8.1 RC（2026-11-09）。已有离线定向测试和 Windows GUI 交叉编译记录；Windows 原生六页面、ANSYS ACT 质量数据采集和 inlet/outlet Sizing 的实际效果仍待实机验收。仓库旧版本可从 [Git 历史](https://github.com/1463503175-pixel/AutoMesh/commits/main/) 找回。本仓库未附开源许可证。</sub>
+<p align="center">
+  <strong>R8.1 RC · 2026-11-09</strong><br />
+  <sub>当前为发布候选版。离线定向测试和 Windows GUI 交叉编译已有记录；Windows 六页面、ANSYS ACT 原生质量数据与 inlet/outlet Sizing 的端到端实机验收尚未完成。</sub><br />
+  <sub>仓库目前未提供开源许可证。历史版本可通过 <a href="https://github.com/1463503175-pixel/AutoMesh/commits/main/">Git 提交记录</a> 查找。</sub>
+</p>
