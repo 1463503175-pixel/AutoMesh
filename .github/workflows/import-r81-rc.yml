@@ -86,3 +86,4 @@ jobs:
           if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
           git commit -m 'Promote verified AutoMesh R8.1 RC from uploaded source ZIP'
           git push
+# R8.1 import is idempotent and refreshes SHA256SUMS after README promotion.
