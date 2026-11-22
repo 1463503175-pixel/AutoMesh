@@ -19,6 +19,11 @@ _WARNING_SELECTION = 'warning_refinement_selection.json'
 MAX_WARNINGS = 64
 # Full ACT element / node traversal is bounded independently for 32 GB hosts.
 MAX_ANALYSIS_ELEMENTS = 4096
+# Keep ACT calls and spatial clustering in small, cancellable chunks on 32 GB hosts.
+# The full marker is checked once. No single chunk reads more than the
+# historical 4096-element safety ceiling; 1024 provides faster bounded work.
+ANALYSIS_BATCH_ELEMENTS = 1024
+MAX_TOTAL_ANALYSIS_ELEMENTS = 65536  # independent total-work safety bound
 # At most 6 active changes are processed per transaction batch. The whole
 # reviewed plan can contain several bounded batches (one user action).
 # Cumulative cell proxy is advisory; geometry and per-batch guards remain.
@@ -159,8 +164,72 @@ def _current_warning_owner(state):
         return _adopt_live_warning_controls(state)
     return {}
 
+
+def quality_marker_prepare(state):
+    """Never delete by prefix; uncertain ownership or dependency checks block reuse."""
+    path=_warning_path('quality_markers_owned.json')
+    if not os.path.isfile(path): return
+    ledger=read(path)
+    entries=ledger.get('groups',[])
+    if not entries: return
+    session=meshing_process_identity()
+    if not session.get('process_pid') or not session.get('process_started_filetime'):
+        raise RuntimeError('Cannot verify Meshing session identity; preserve quality markers')
+    live=list(Model.NamedSelections.Children)
+    for entry in entries:
+        matches=[s for s in live if int(s.ObjectId)==entry['object_id']]
+        if not matches: continue
+        s=matches[0]
+        if utext(s.Name).strip().lower() in ('inlet','outlet','wall','fluid'):
+            raise RuntimeError('Physical region is never eligible for diagnostic cleanup')
+        if (ledger.get('schema')!=1 or ledger.get('session')!=meshing_process_identity()
+                or ledger.get('project')!=state['project']
+                or utext(s.Name)!=entry['name']
+                or entry.get('never_exported') is not True
+                or bool(s.SendToSolver)
+                or sorted(int(v) for v in s.Location.Ids)!=entry['ids']):
+            raise RuntimeError('Quality marker ownership/scope changed; preserve object and inspect dependencies before another mark')
+        # shortcut: ACT may lack a complete dependency API; block rather than guess from tree names.
+        dependencies=getattr(s,'GetDependentObjects',None)
+        if not callable(dependencies):
+            raise RuntimeError('Cannot verify all quality marker references in this ACT version; preserve marker and inspect it manually before another mark')
+        if list(dependencies()):
+            raise RuntimeError('Quality marker is referenced; preserve dependent objects and retire references before another mark')
+    # Preflight ALL entries before deleting any. No exported/legacy marker is eligible.
+    for entry in entries:
+        for s in live:
+            if int(s.ObjectId)==entry['object_id']:
+                logger=globals().get('script_event')
+                if logger: logger('marker_cleanup_start',dict(object_id=entry['object_id'],name=entry['name']))
+                s.Delete()
+                if any(int(x.ObjectId)==entry['object_id'] for x in Model.NamedSelections.Children):
+                    raise RuntimeError('Quality marker deletion not confirmed')
+                if logger: logger('marker_cleanup_end',dict(object_id=entry['object_id']))
+    write(path,dict(schema=1,project=state['project'],session=meshing_process_identity(),groups=[]))
+
+
+def quality_marker_register(summary,state):
+    if summary.get('status')!='created': return
+    entries=[]
+    for name in summary.get('created_groups',[]):
+        matches=[s for s in Model.NamedSelections.Children if utext(s.Name)==utext(name)]
+        if len(matches)!=1: raise RuntimeError('Quality marker identity ambiguous')
+        s=matches[0]
+        if bool(s.SendToSolver): raise RuntimeError('Quality marker unexpectedly exports to solver')
+        entries.append(dict(name=utext(s.Name),object_id=int(s.ObjectId),
+            ids=sorted(int(v) for v in s.Location.Ids),never_exported=True,
+            object_type='MeshElementNamedSelection',purpose='quality_diagnostic',persistent=True,
+            created_at=time.time(),job_id=job['job_id']))
+    info=dict(schema=1,project=state['project'],fingerprint=state['fingerprint'],
+        mesh_count=int(Model.Mesh.Elements),session=meshing_process_identity(),groups=entries)
+    write(_warning_path('quality_markers_owned.json'),info)
+    logger=globals().get('script_event')
+    if logger: logger('marker_registered',info)
+    return info
+
 def warning_register_marker(summary, state):
     """Persist the identity of the newly created quality-element selection group."""
+    quality_marker_register(summary,state)
     groups = summary.get('created_groups') or []
     root = Model.NamedSelections
     tagged = []
@@ -188,7 +257,12 @@ def warning_register_marker(summary, state):
     return info
 
 
-def _read_warning_elements(state):
+def _verified_warning_ids(state):
+    """Verify the complete ACT Named Selection and reject stale mesh IDs.
+
+    Only IDs are collected here; no MeshData nodes are read. This is cheap
+    enough for a large worksheet selection and must run before any batch.
+    """
     filename = _warning_path(_WARNING_MARKER)
     if not os.path.isfile(filename):
         raise RuntimeError(u'请先按偏度范围标记当前网格的 Mesh Elements。')
@@ -216,10 +290,26 @@ def _read_warning_elements(state):
         raise RuntimeError(u'当前偏度选择组为空；请重新标记。')
     if len(selected) != int(marker['worksheet_count']):
         raise RuntimeError(u'标记数量与实际选择组单元总数不一致，请重新执行偏度范围标记。')
+    if len(selected) > MAX_TOTAL_ANALYSIS_ELEMENTS:
+        raise RuntimeError(u'当前选中 %d 个异常单元，超过单任务 %d 个单元的资源安全上限；请分区或缩小区间。旧网格和 Sizing 未修改。' %
+                           (len(selected), MAX_TOTAL_ANALYSIS_ELEMENTS))
+    return marker, selected
+
+
+def _read_warning_elements(state, selected=None, marker=None, offset=0, total=None):
+    """Bounded ACT MeshData read for a verified subset of mesh element IDs.
+
+    The complete selection is checked by _verified_warning_ids before this
+    helper is called. An individual batch is never allowed to exceed 4096.
+    """
+    if marker is None or selected is None:
+        marker, selected = _verified_warning_ids(state)
     if len(selected) > MAX_ANALYSIS_ELEMENTS:
-        # This is a separate upper bound on ACT node reads, not an all-or-none
-        # 64-element hotspot limit. Never allocate or scan arbitrary millions.
-        return marker, [], 'analysis_limit:%d' % len(selected)
+        raise RuntimeError(u'ACT 单批安全读取上限为 %d 个单元；请使用分批分析。' % MAX_ANALYSIS_ELEMENTS)
+    if total is None:
+        total = len(selected)
+    if total < offset + len(selected):
+        raise RuntimeError(u'分批单元读取计数无效')
     data = ExtAPI.DataModel.MeshDataByName('Global')
     factor = unit_to_mm(utext(data.Unit))
     if factor is None:
@@ -228,12 +318,18 @@ def _read_warning_elements(state):
     face_to_body = dict((int(f['id']),int(f['body'])) for f in state.get('faces',[]))
     observations = []
     rejected = []
+    # Progress receipts perform disk writes. Keep a large worksheet operation
+    # responsive without producing hundreds of per-element filesystem writes.
+    progress_stride = max(64, int(total)//50)
     for selected_index, eid in enumerate(selected):
         cancellation_checkpoint()
-        if selected_index == 0 or (selected_index + 1) % 16 == 0 or selected_index + 1 == len(selected):
+        global_done = offset + selected_index + 1
+        if (selected_index == 0 or selected_index + 1 == len(selected) or
+                global_done % progress_stride == 0):
             try:
-                pct = 72 + int(5.0 * (selected_index + 1) / max(1, len(selected)))
-                emit_progress(pct, '提取标记单元几何', '%d/%d 个单元' % (selected_index + 1, len(selected)))
+                done = offset + selected_index + 1
+                pct = 72 + int(6.0 * done / max(1, total))
+                emit_progress(pct, '分批提取异常单元几何', '%d/%d 个单元' % (done, total))
             except Exception:
                 pass
         try:
@@ -552,46 +648,140 @@ def _existing_body_size_caps(state):
     return caps
 
 
+def _warning_candidate_order(c, metric):
+    """Preserve the existing verified-metric-first priority across batches."""
+    if metric == 'ElementQuality':
+        value = c.get('element_quality_min')
+        return (value is None, value if value is not None else 0,
+                -len(c['element_ids']), c['body_id'], c['candidate_id'])
+    value = c.get('skewness_max')
+    return (value is None, -(value if value is not None else 0),
+            -len(c['element_ids']), c['body_id'], c['candidate_id'])
+
+
+def _analyze_warning_batches(state, progress=True):
+    """Read and spatially cluster every verified element in bounded batches.
+
+    Markers remain immutable. Every element is accounted for in one of:
+    accepted candidates, rejected geometry/candidate or excess candidate cap.
+    Neither preview nor publish creates/modifies a Meshing object here.
+    """
+    marker, selected = _verified_warning_ids(state)
+    total = len(selected)
+    metric = marker.get('metric', 'Skewness')
+    caps = _existing_body_size_caps(state)
+    observations = []
+    rejected = []
+    digest = hashlib.sha256(('warning-batch-v1:%s:%s:%d' % (
+        state['fingerprint'], metric, total)).encode('utf-8'))
+    read_batches = 0
+    for offset in range(0, total, ANALYSIS_BATCH_ELEMENTS):
+        cancellation_checkpoint()
+        chosen = selected[offset:offset+ANALYSIS_BATCH_ELEMENTS]
+        _, chunk_obs, chunk_digest = _read_warning_elements(
+            state, selected=chosen, marker=marker, offset=offset, total=total)
+        observations.extend(chunk_obs)
+        rejected.extend(marker.get('_element_rejections', []))
+        digest.update(('%d:%d:%s|' % (offset, len(chosen), chunk_digest)).encode('ascii'))
+        read_batches += 1
+        if progress:
+            emit_progress(78, '分批读取质量异常单元',
+                          u'第 %d 批；已读取 %d/%d 个标记单元' %
+                          (read_batches, min(total, offset+len(chosen)), total))
+    # Revalidate the complete worksheet marker after the last batch; do not
+    # approve candidates based on a selection changed midway through reading.
+    _, now_selected = _verified_warning_ids(state)
+    if now_selected != selected:
+        raise RuntimeError(u'异常单元选择组在分批分析期间发生变化；方案未发布。')
+    if len(observations)+len(rejected) != total:
+        raise RuntimeError(u'异常单元分析计数不守恒；拒绝使用不完整候选。')
+    # Spatial proximity keeps local features together without one unbounded
+    # O(n^2) clustering job. Component boundaries are conservatively treated
+    # as separate candidates and require the existing overlap review.
+    ordered = sorted(observations, key=lambda x:(
+        x['body'], int(math.floor(x['xyz_mm'][0]/6.0)),
+        int(math.floor(x['xyz_mm'][1]/6.0)),
+        int(math.floor(x['xyz_mm'][2]/6.0)), x['id']))
+    proposals = []
+    spatial_batches = 0
+    for offset in range(0, len(ordered), ANALYSIS_BATCH_ELEMENTS):
+        cancellation_checkpoint()
+        block = ordered[offset:offset+ANALYSIS_BATCH_ELEMENTS]
+        block_rejected = []
+        block_candidates, _ = _hotspot_candidates(block, caps, block_rejected,
+                                                   state['fingerprint'], metric)
+        proposals.extend(block_candidates)
+        rejected.extend(block_rejected)
+        spatial_batches += 1
+        if progress:
+            emit_progress(79+int(13.0*(offset+len(block))/max(1,len(ordered))),
+                          '分批分簇与审核', u'已核验 %d/%d 个有效单元' %
+                          (offset+len(block), len(ordered)))
+    proposals.sort(key=lambda x:_warning_candidate_order(x, metric))
+    if len(proposals)>MAX_SPHERES:
+        for excess in proposals[MAX_SPHERES:]:
+            rejected.append({'element_ids':excess['element_ids'],
+                             'count':len(excess['element_ids']),
+                             'reason':'candidate_count_limit','limit':MAX_SPHERES})
+        proposals=proposals[:MAX_SPHERES]
+    for i,c in enumerate(proposals):
+        c['batch_index']=i//MAX_BATCH_SPHERES+1
+    covered=set(eid for c in proposals for eid in c['element_ids'])
+    rejected_count=sum(int(x.get('count',len(x.get('element_ids',[])))) for x in rejected)
+    if len(covered)+rejected_count != total:
+        raise RuntimeError(u'分批候选未完整追踪所有异常单元；拒绝发布不守恒方案。')
+    return {'marker':marker,'warning_digest':digest.hexdigest(),
+            'clusters':proposals,'rejected_groups':rejected,
+            'warning_count':total,'covered_count':len(covered),
+            'uncovered_count':total-len(covered),
+            'total_cell_proxy':int(round(sum(c['cell_budget_proxy'] for c in proposals))),
+            'analysis_batch_count':read_batches,'analysis_batch_size':ANALYSIS_BATCH_ELEMENTS,
+            'spatial_batch_count':spatial_batches,'analysis_processed_count':total,
+            'analysis_complete':True, 'quality_metric':metric}
+
+
 def preview_warning_refinement(state):
     cancellation_checkpoint()
-    emit_progress(71, '读取偏度标记组', '核验标记组、网格数量和当前几何身份')
-    marker, observations, digest=_read_warning_elements(state)
-    if not observations and digest.startswith('analysis_limit:'):
-        amount=int(digest.split(':')[1])
-        proposal={'schema_version':1,'status':'no_safe_candidates','project':state['project'],
-                 'geometry_fingerprint':state['fingerprint'],'mesh_elements':int(Model.Mesh.Elements),
-                 'warning_count':amount,'covered_count':0,'uncovered_count':amount,
-                 'range_min':marker.get('range_min'),'range_max':marker.get('range_max'),
-                 'job_id':utext(job.get('job_id','')),
-                 'group_count':0,'clusters':[],'total_cell_proxy':0,
-                 'notes':u'选中单元超过 ACT 一次性安全读取上限；建议缩小范围或将范围分段分批筛选（未修改原网格）。',
-                 'rejected_groups':[{'element_ids':[], 'count':amount,'reason':'analysis_element_count_limit', 'limit':MAX_ANALYSIS_ELEMENTS}]}
-        proposal['plan_id']=hashlib.sha256((utext(state['fingerprint'])+':'+digest).encode('utf-8')).hexdigest()[:20]
-        write(_warning_path(_WARNING_PLAN),proposal)
-        return proposal
-    emit_progress(79, '核对已有 Sizing', '检查现有局部尺寸，避免覆盖更细的手工控制')
-    caps=_existing_body_size_caps(state)
-    emit_progress(86, '空间分簇与预算审核', '按几何 Body、邻接关系和影响半径生成独立候选')
-    rejected=list(marker.get('_element_rejections',[]))
-    groups,proxy=_hotspot_candidates(observations,caps,rejected,state['fingerprint'],marker.get('metric','Skewness'))
-    # No safe candidate is NOT a failed task. Record why, without creating Sizing.
-    # The caller can open this report while the Meshing mesh stays untouched.
-    covered=set(i for x in groups for i in x['element_ids'])
-    proposal={'schema_version':1,'status':('ready' if groups else 'no_safe_candidates'),'project':state['project'],
-              'geometry_fingerprint':state['fingerprint'],
-              'job_id':utext(job.get('job_id','')),
-              'mesh_elements':int(Model.Mesh.Elements),'warning_digest':digest,
-              'warning_count':len(observations)+len(marker.get('_element_rejections',[])),
-              'range_min':marker.get('range_min'),'range_max':marker.get('range_max'),'group_count':len(groups),'batch_count':(len(groups)+MAX_BATCH_SPHERES-1)//MAX_BATCH_SPHERES,
-              'covered_count':len(covered),'uncovered_count':len(observations)+len(marker.get('_element_rejections',[]))-len(covered),
-              'clusters':groups,'rejected_groups':rejected,'total_cell_proxy':int(round(proxy)),
-              'candidate_count':len(groups),'candidate_max_skew_verified':sum(1 for g in groups if g['skewness_verified']),
-              'source':('Named Selection Worksheet: Mesh Element ElementQuality %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_element_quality_range' else ('Named Selection Worksheet: Mesh Element Skewness %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_skewness_range' else 'ANSYS Mesh Quality Worksheet element Named Selection')),
-              'quality_metric':marker.get('metric','Skewness'),
-              'skewness_threshold':marker.get('skewness_threshold'),
-              'notes':u'完整列出所有可分析局部候选（不按 24 组截断）。发布时才审核选中集合的累计预算，每批最多 6 个；真实偏度不可用则明确显示未知；晶圆间净空仍需逐候选人工确认。'
-             }
-    emit_progress(94, '保存局部方案', '候选 %d 组；正在写入本任务专属方案文件' % len(groups))
+    emit_progress(71, '读取偏度标记组', '核验所有标记单元，再安全分批诊断')
+    analysis = _analyze_warning_batches(state, progress=True)
+    marker = analysis['marker']
+    groups = analysis['clusters']
+    rejected = analysis['rejected_groups']
+    proposal = {'schema_version':1,
+                'status':('ready' if groups else 'no_safe_candidates'),
+                'project':state['project'],
+                'geometry_fingerprint':state['fingerprint'],
+                'job_id':utext(job.get('job_id','')),
+                'mesh_elements':int(Model.Mesh.Elements),
+                'warning_digest':analysis['warning_digest'],
+                'warning_count':analysis['warning_count'],
+                'range_min':marker.get('range_min'),'range_max':marker.get('range_max'),
+                'group_count':len(groups),
+                'batch_count':(len(groups)+MAX_BATCH_SPHERES-1)//MAX_BATCH_SPHERES,
+                'covered_count':analysis['covered_count'],
+                'uncovered_count':analysis['uncovered_count'],
+                'clusters':groups,'rejected_groups':rejected,
+                'total_cell_proxy':analysis['total_cell_proxy'],
+                'candidate_count':len(groups),
+                'candidate_max_skew_verified':sum(1 for g in groups if g['skewness_verified']),
+                'source':('Named Selection Worksheet: Mesh Element ElementQuality %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_element_quality_range' else ('Named Selection Worksheet: Mesh Element Skewness %.3g–%.3g' % (marker.get('range_min'), marker.get('range_max')) if marker.get('selection_source')=='named_selection_worksheet_skewness_range' else 'ANSYS Mesh Quality Worksheet element Named Selection')),
+                'quality_metric':analysis['quality_metric'],
+                'skewness_threshold':marker.get('skewness_threshold'),
+                'analysis_batch_count':analysis['analysis_batch_count'],
+                'analysis_batch_size':analysis['analysis_batch_size'],
+                'spatial_batch_count':analysis['spatial_batch_count'],
+                'analysis_processed_count':analysis['analysis_processed_count'],
+                'analysis_complete':analysis['analysis_complete'],
+                'notes':(u'已对 %d 个标记单元完成 %d 批安全读取和 %d 批空间分析；'
+                         u'生成 %d 组可审核局部方案；未覆盖 %d 个单元均记录原因。'
+                         u'跨批边界的邻近球形作用域需人工核对，不允许重复发布。'
+                         u'每批发布最多 6 个，晶圆间净空需要逐项人工审核；无法读取的真实偏度不进行估算。' %
+                         (analysis['warning_count'],analysis['analysis_batch_count'],
+                          analysis['spatial_batch_count'],len(groups),
+                          analysis['uncovered_count']))}
+    emit_progress(94, '保存局部方案',
+                  u'完成 %d 批读取，候选 %d 组；正在保存完整覆盖统计' %
+                  (analysis['analysis_batch_count'],len(groups)))
     proposal['plan_id']=hashlib.sha256(json.dumps(
         [proposal['project'],proposal['geometry_fingerprint'],proposal['warning_digest'],groups],
         sort_keys=True,ensure_ascii=True).encode('utf-8')).hexdigest()[:16]
@@ -892,15 +1082,17 @@ def publish_warning_refinement(state):
         raise RuntimeError(u'候选方案不存在或已失效，没有可发布的局部细化建议；请重新生成。')
     if plan.get('project')!=state['project'] or plan.get('geometry_fingerprint')!=state['fingerprint']:
         raise RuntimeError(u'工程或几何变化，拒绝应用过期候选。')
-    _, observations, digest=_read_warning_elements(state)
-    if digest!=plan.get('warning_digest') or int(Model.Mesh.Elements)!=int(plan['mesh_elements']):
+    # Re-run the SAME bounded read + spatial analysis that produced the
+    # preview. Never trust a large plan without rechecking every selected ID.
+    analysis=_analyze_warning_batches(state, progress=False)
+    if (analysis['warning_digest']!=plan.get('warning_digest') or
+            int(Model.Mesh.Elements)!=int(plan['mesh_elements'])):
         raise RuntimeError(u'目标单元节点、偏度数据或网格标记发生变化，请重新分析。')
-    # Recompute without any active-selection budget to prove the candidate
-    # geometry and ordering are identical to the approved read-only preview.
-    caps=_existing_body_size_caps(state)
-    all_candidates,_=_hotspot_candidates(observations,caps,fingerprint=state['fingerprint'],metric=plan.get('quality_metric','Skewness'))
-    if all_candidates!=plan.get('clusters'):
-        raise RuntimeError(u'候选几何或质量值与预览不一致，禁止使用旧审核结果。')
+    all_candidates=analysis['clusters']
+    if (all_candidates!=plan.get('clusters') or
+            analysis['warning_count']!=int(plan.get('warning_count',-1)) or
+            analysis['covered_count']!=int(plan.get('covered_count',-1))):
+        raise RuntimeError(u'候选几何、覆盖数量或质量值与预览不一致，禁止使用旧审核结果。')
     chosen_ids=_load_operator_selection(plan,state)
     index=dict((x['candidate_id'],x) for x in all_candidates)
     if len(index)!=len(all_candidates) or any(i not in index for i in chosen_ids):

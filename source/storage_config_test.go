@@ -19,7 +19,7 @@ func TestCopyWorkspaceVerifiedKeepsSource(t *testing.T) {
 	}
 	n, e := copyWorkspaceVerified(src, dst)
 	if e != nil || n != 1 {
-		t.Fatalf("%d %v", n, e)
+		t.Fatalf("%d %v source=%q destination=%q", n, e, src, dst)
 	}
 	for _, dir := range []string{src, dst} {
 		b, e := os.ReadFile(filepath.Join(dir, "nested", "quality_report.html"))

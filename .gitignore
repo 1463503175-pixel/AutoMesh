@@ -1,11 +1,4 @@
-# Build/test caches, never ignore the shipped release EXE or checksum manifest
 __pycache__/
-.pytest_cache/
 *.py[cod]
+.pytest_cache/
 .venv/
-venv/
-*.log
-*.tmp
-*.bak
-.DS_Store
-Thumbs.db

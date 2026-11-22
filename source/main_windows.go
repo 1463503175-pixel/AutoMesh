@@ -485,8 +485,8 @@ func visible(h uintptr, yes bool) {
 	call(show, h, mode)
 }
 func refresh()        { call(invalidate, ui.window, 0, 0) }
-func alert(s string)  { call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1"), MB_ICONERROR) }
-func notice(s string) { call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1"), MB_ICONINFORMATION) }
+func alert(s string)  { call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1.2"), MB_ICONERROR) }
+func notice(s string) { call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1.2"), MB_ICONINFORMATION) }
 func enabled(h uintptr, yes bool) {
 	if h == 0 {
 		return
@@ -498,7 +498,7 @@ func enabled(h uintptr, yes bool) {
 	call(enableWindow, h, value)
 }
 func confirm(s string) bool {
-	return call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1"), MB_YESNO|MB_ICONWARNING) == 6
+	return call(msgbox, ui.window, ptr(s), ptr("AutoMesh R8.1.2"), MB_YESNO|MB_ICONWARNING) == 6
 }
 func freeGiB() float64 {
 	m := memoryStatus{}
@@ -959,7 +959,7 @@ func (a *state) screen(dc uintptr, w, h int) {
 	if w >= 1080 {
 		textAt(dc, "2024 R2  ·  网格工作台", 256, 14, 245, 22, 13, 400, slate)
 	} else {
-		textAt(dc, "R8.1", 315, 14, 74, 22, 12, 500, slate)
+		textAt(dc, "R8.1.2", 315, 14, 74, 22, 12, 500, slate)
 	}
 	sharedView := a.sharedDataStatus()
 	projectLabel := "未同步"
@@ -1425,7 +1425,7 @@ func (a *state) drawSettings(dc uintptr, x, cw int) {
 	textAt(dc, "高级维护", x+cw/2+10, 454, cw/2-40, 28, 17, 650, navy)
 	textAt(dc, "仅处理未绑定 Sizing 的旧版辅助命名，不改动人工命名。", x+cw/2+10, 486, cw/2-40, 32, 11, 450, slate)
 	textAt(dc, "软件信息", x+cw/2+10, 568, 120, 20, 12, 650, slate)
-	textAt(dc, "AutoMesh R8.1 RC · 保留连续 Sizing 安全内核", x+cw/2+10, 590, cw/2-40, 20, 11, 500, navy)
+	textAt(dc, "AutoMesh R8.1.2 RC · 保留连续 Sizing 安全内核", x+cw/2+10, 590, cw/2-40, 20, 11, 500, navy)
 	textAt(dc, "Workbench 2024 R2 桥接 · 当前连接状态见顶部", x+cw/2+10, 612, cw/2-40, 18, 10, 400, slate)
 	textAt(dc, "异常占用：先核验 Meshing 后台任务已退出，再使用双重确认解除。", x+30, 632, cw/2-45, 18, 10, 450, warningcolor)
 }
@@ -1502,7 +1502,20 @@ func (a *state) requestStop() {
 	a.mu.Unlock()
 	a.postProgress("I|已发起安全停止请求|将在可取消检查点退出；若远端状态不明则保留任务锁")
 }
-func runPython(timeout time.Duration, args ...string) ([]byte, error) {
+func runPython(timeout time.Duration, args ...string) (out []byte, err error) {
+	started := time.Now()
+	script := ""
+	if len(args) > 0 {
+		script = filepath.Base(args[0])
+	}
+	lifecycleEvent("bridge_start", map[string]any{"script": script})
+	defer func() {
+		detail := map[string]any{"script": script, "elapsed_ms": time.Since(started).Milliseconds()}
+		if err != nil {
+			detail["error"] = err.Error()
+		}
+		lifecycleEvent("bridge_end", detail)
+	}()
 	python, err := choosePythonCandidate()
 	if err != nil {
 		return nil, err
@@ -1511,7 +1524,7 @@ func runPython(timeout time.Duration, args ...string) ([]byte, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, python.exe, append(append([]string{}, python.prefix...), args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
-	out, err := cmd.CombinedOutput()
+	out, err = cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		return out, fmt.Errorf("Workbench Python 桥接超时（%s）；任务可能仍在 Meshing 中运行，禁止再次提交: %w", timeout, ctx.Err())
 	}
@@ -1637,6 +1650,7 @@ func (a *state) taskRun(phase, system string, snap *Snapshot, plan *Plan) (Resul
 	// only in WaitResult (which is entered after dispatch returns).
 	stopProgress := make(chan struct{})
 	go func() {
+		defer backgroundGuard()
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		last := ""
@@ -1673,7 +1687,11 @@ func (a *state) taskRun(phase, system string, snap *Snapshot, plan *Plan) (Resul
 	// Poll durable receipts/results concurrently. A timeout is UNCERTAIN,
 	// NOT permission to clear or resend the task.
 	dispatchDone := make(chan error, 1)
-	go func() { _, sendErr := a.wbRun("dispatch", system); dispatchDone <- sendErr }()
+	go func() {
+		defer backgroundGuard()
+		_, sendErr := a.wbRun("dispatch", system)
+		dispatchDone <- sendErr
+	}()
 	poll := time.NewTicker(time.Second)
 	defer poll.Stop()
 	start := time.Now()
@@ -2006,19 +2024,21 @@ func (a *state) run(kind string) {
 	a.postProgress("正在检查当前工程…")
 	started := time.Now()
 	go func() {
+		defer backgroundGuard()
 		// Sample system free RAM while the current ANSYS task is active.
 		// This is NOT ANSYS process RSS or a GPU/CPU utilization measurement.
 		stopRAM := make(chan struct{})
 		ramMinimum := make(chan float64, 1)
 		startRAM := freeGiB()
 		go func() {
+			defer backgroundGuard()
 			minimum := startRAM
+			defer func() { ramMinimum <- minimum }()
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
 			for {
 				select {
 				case <-stopRAM:
-					ramMinimum <- minimum
 					return
 				case <-ticker.C:
 					available := freeGiB()
@@ -2070,19 +2090,21 @@ func (a *state) run(kind string) {
 				} else {
 					// The implicit inspect succeeded even if the next task
 					// subsequently fails. Reuse this genuine scan on later pages.
-					a.mu.Lock()
-					a.snapshot = &snap
-					a.scannedSystem = system
-					a.scannedBaseMM = base
-					a.shared.geometryScannedAt = time.Now()
-					a.shared.geometryStale = false
-					a.shared.geometryError = ""
-					if a.qualityResult != nil && (a.qualityFingerprint != "" && a.qualityFingerprint != snap.Fingerprint ||
-						a.qualityMeshSignature != "" && snapshotMeshSignature(&snap) != "" && a.qualityMeshSignature != snapshotMeshSignature(&snap) ||
-						a.qualityQuickGeometrySignature != "" && snap.GeometryQuickSignature != "" && a.qualityQuickGeometrySignature != snap.GeometryQuickSignature) {
-						a.qualityStale = true
-					}
-					a.mu.Unlock()
+					func() {
+						a.mu.Lock()
+						defer a.mu.Unlock()
+						a.snapshot = &snap
+						a.scannedSystem = system
+						a.scannedBaseMM = base
+						a.shared.geometryScannedAt = time.Now()
+						a.shared.geometryStale = false
+						a.shared.geometryError = ""
+						if a.qualityResult != nil && (a.qualityFingerprint != "" && a.qualityFingerprint != snap.Fingerprint ||
+							a.qualityMeshSignature != "" && snapshotMeshSignature(&snap) != "" && a.qualityMeshSignature != snapshotMeshSignature(&snap) ||
+							a.qualityQuickGeometrySignature != "" && snap.GeometryQuickSignature != "" && a.qualityQuickGeometrySignature != snap.GeometryQuickSignature) {
+							a.qualityStale = true
+						}
+					}()
 					p := &Plan{GlobalMM: base, ApplyGlobal: a.activeApplyGlobal}
 					result, err = a.taskRun(kind, system, &snap, p)
 				}
@@ -2114,122 +2136,134 @@ func (a *state) run(kind string) {
 		_ = writeJSON(a.ws.path("last_task_timing.json"), timing)
 		if err == nil {
 			if kind == "inspect" {
-				a.mu.Lock()
-				a.scannedSystem = system
-				a.scannedBaseMM = base
-				a.mu.Unlock()
+				func() {
+					a.mu.Lock()
+					defer a.mu.Unlock()
+					a.scannedSystem = system
+					a.scannedBaseMM = base
+				}()
 			}
 			if kind == "publish_names" || kind == "rename_auxiliary" {
-				a.mu.Lock()
-				a.preparedSystem = ""
-				a.scannedSystem = ""
-				a.snapshot = nil // newly published names make prior cached scopes stale
-				a.shared.geometryStale = true
-				a.shared.geometryError = ""
-				a.mu.Unlock()
+				func() {
+					a.mu.Lock()
+					defer a.mu.Unlock()
+					a.preparedSystem = ""
+					a.scannedSystem = ""
+					a.snapshot = nil // newly published names make prior cached scopes stale
+					a.shared.geometryStale = true
+					a.shared.geometryError = ""
+				}()
 			}
 			if kind == "prepare" || kind == "publish_existing_sizing" {
-				a.mu.Lock()
-				a.preparedSystem = system
-				a.mu.Unlock()
+				func() {
+					a.mu.Lock()
+					defer a.mu.Unlock()
+					a.preparedSystem = system
+				}()
 			}
 			if kind != "publish_names" && kind != "rename_auxiliary" && kind != "sync_status" {
 				if snap, e := a.ws.LoadSnapshot(); e == nil {
-					a.mu.Lock()
-					a.snapshot = &snap
-					if kind == "inspect" {
-						a.shared.geometryScannedAt = time.Now()
-						a.shared.geometryStale = false
-						a.shared.geometryError = ""
-					}
+					func() {
+						a.mu.Lock()
+						defer a.mu.Unlock()
+						a.snapshot = &snap
+						if kind == "inspect" {
+							a.shared.geometryScannedAt = time.Now()
+							a.shared.geometryStale = false
+							a.shared.geometryError = ""
+						}
+						if a.qualityResult != nil {
+							meshSignature := snapshotMeshSignature(&snap)
+							quickGeometry := snap.GeometryQuickSignature
+							if a.qualityFingerprint != "" && a.qualityFingerprint != snap.Fingerprint {
+								a.qualityStale = true
+							} else if a.qualityMeshSignature != "" && meshSignature != "" && a.qualityMeshSignature != meshSignature {
+								a.qualityStale = true
+							} else if a.qualityQuickGeometrySignature != "" && quickGeometry != "" && a.qualityQuickGeometrySignature != quickGeometry {
+								a.qualityStale = true
+							}
+						}
+					}()
+				} else if kind == "inspect" {
+					func() {
+						a.mu.Lock()
+						defer a.mu.Unlock()
+						a.scannedSystem = ""
+						a.shared.geometryStale = true
+						a.shared.geometryError = "完整几何扫描已返回，但本地 Snapshot 读取失败：" + e.Error()
+					}()
+				}
+			}
+		}
+		func() {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if err != nil {
+				a.errorText = err.Error()
+			} else {
+				a.errorText = ""
+			}
+			if err != nil {
+				switch kind {
+				case "sync_status":
+					a.shared.engineeringError = err.Error()
+					a.shared.engineeringStale = true
+				case "inspect":
+					a.shared.geometryError = err.Error()
+					a.shared.geometryStale = true
+				case "quality_check", "quality_check_deep":
+					a.shared.qualityError = err.Error()
+					a.qualityStale = true
+				}
+			}
+			if err == nil {
+				switch kind {
+				case "publish_names", "rename_auxiliary", "prepare", "publish_existing_sizing", "warning_refine_publish", "generate_reviewed", "auto_onepass", "auto":
+					a.shared.engineeringStale = true
+				}
+			}
+			if result.JobID != "" {
+				a.last = &result
+				var sm map[string]any
+				_ = json.Unmarshal(result.Summary, &sm)
+				a.lastSummary = sm
+				if result.Phase == "sync_status" {
+					a.engineeringSummary = sm
+					a.engineeringSyncedAt = time.Now()
+					a.shared.engineeringSystem = system
+					a.shared.engineeringStale = false
+					a.shared.engineeringError = ""
 					if a.qualityResult != nil {
-						meshSignature := snapshotMeshSignature(&snap)
-						quickGeometry := snap.GeometryQuickSignature
-						if a.qualityFingerprint != "" && a.qualityFingerprint != snap.Fingerprint {
-							a.qualityStale = true
-						} else if a.qualityMeshSignature != "" && meshSignature != "" && a.qualityMeshSignature != meshSignature {
-							a.qualityStale = true
-						} else if a.qualityQuickGeometrySignature != "" && quickGeometry != "" && a.qualityQuickGeometrySignature != quickGeometry {
+						newMesh := printable(sm["mesh_signature"])
+						newGeometry := printable(sm["geometry_quick_signature"])
+						newProject := printable(sm["project"])
+						if (a.qualityMeshSignature != "" && newMesh != "—" && a.qualityMeshSignature != newMesh) ||
+							(a.qualityQuickGeometrySignature != "" && newGeometry != "—" && a.qualityQuickGeometrySignature != newGeometry) ||
+							(a.qualityProject != "" && newProject != "—" && !strings.EqualFold(filepath.Clean(a.qualityProject), filepath.Clean(newProject))) {
 							a.qualityStale = true
 						}
 					}
-					a.mu.Unlock()
-				} else if kind == "inspect" {
-					a.mu.Lock()
-					a.scannedSystem = ""
-					a.shared.geometryStale = true
-					a.shared.geometryError = "完整几何扫描已返回，但本地 Snapshot 读取失败：" + e.Error()
-					a.mu.Unlock()
 				}
-			}
-		}
-		a.mu.Lock()
-		if err != nil {
-			a.errorText = err.Error()
-		} else {
-			a.errorText = ""
-		}
-		if err != nil {
-			switch kind {
-			case "sync_status":
-				a.shared.engineeringError = err.Error()
-				a.shared.engineeringStale = true
-			case "inspect":
-				a.shared.geometryError = err.Error()
-				a.shared.geometryStale = true
-			case "quality_check", "quality_check_deep":
-				a.shared.qualityError = err.Error()
-				a.qualityStale = true
-			}
-		}
-		if err == nil {
-			switch kind {
-			case "publish_names", "rename_auxiliary", "prepare", "publish_existing_sizing", "warning_refine_publish", "generate_reviewed", "auto_onepass", "auto":
-				a.shared.engineeringStale = true
-			}
-		}
-		if result.JobID != "" {
-			a.last = &result
-			var sm map[string]any
-			_ = json.Unmarshal(result.Summary, &sm)
-			a.lastSummary = sm
-			if result.Phase == "sync_status" {
-				a.engineeringSummary = sm
-				a.engineeringSyncedAt = time.Now()
-				a.shared.engineeringSystem = system
-				a.shared.engineeringStale = false
-				a.shared.engineeringError = ""
-				if a.qualityResult != nil {
-					newMesh := printable(sm["mesh_signature"])
-					newGeometry := printable(sm["geometry_quick_signature"])
-					newProject := printable(sm["project"])
-					if (a.qualityMeshSignature != "" && newMesh != "—" && a.qualityMeshSignature != newMesh) ||
-						(a.qualityQuickGeometrySignature != "" && newGeometry != "—" && a.qualityQuickGeometrySignature != newGeometry) ||
-						(a.qualityProject != "" && newProject != "—" && !strings.EqualFold(filepath.Clean(a.qualityProject), filepath.Clean(newProject))) {
-						a.qualityStale = true
+				if result.Phase == "quality_check" || result.Phase == "diagnose" || result.Phase == "generate_reviewed" || result.Phase == "auto_onepass" || result.Phase == "auto" {
+					if result.Status == "ok" && (len(asMap(sm["quality"])) > 0 ||
+						(printable(sm["quality_status"]) == "not_measured" && printable(sm["quality_gate"]) == "no_mesh")) {
+						cpy := result
+						a.qualityResult = &cpy
+						a.qualitySummary = sm
+						a.qualityCheckedAt = time.Now()
+						a.qualityStale = false
+						a.shared.qualitySystem = system
+						a.shared.qualityError = ""
+						a.qualityFingerprint = printable(sm["geometry_fingerprint"])
+						a.qualityMeshSignature = printable(sm["mesh_signature"])
+						a.qualityProject = printable(sm["project"])
+						a.qualityQuickGeometrySignature = printable(sm["geometry_quick_signature"])
 					}
+				} else if result.Phase != "inspect" && result.Phase != "sync_status" && result.Phase != "mark_failed" && result.Phase != "mark_warning" && result.Phase != "mark_high_skew" && result.Phase != "mark_low_element_quality" && result.Phase != "warning_refine_preview" && result.Phase != "publish_names" && result.Phase != "rename_auxiliary" {
+					a.qualityStale = true
 				}
 			}
-			if result.Phase == "quality_check" || result.Phase == "diagnose" || result.Phase == "generate_reviewed" || result.Phase == "auto_onepass" || result.Phase == "auto" {
-				if result.Status == "ok" && (len(asMap(sm["quality"])) > 0 ||
-					(printable(sm["quality_status"]) == "not_measured" && printable(sm["quality_gate"]) == "no_mesh")) {
-					cpy := result
-					a.qualityResult = &cpy
-					a.qualitySummary = sm
-					a.qualityCheckedAt = time.Now()
-					a.qualityStale = false
-					a.shared.qualitySystem = system
-					a.shared.qualityError = ""
-					a.qualityFingerprint = printable(sm["geometry_fingerprint"])
-					a.qualityMeshSignature = printable(sm["mesh_signature"])
-					a.qualityProject = printable(sm["project"])
-					a.qualityQuickGeometrySignature = printable(sm["geometry_quick_signature"])
-				}
-			} else if result.Phase != "inspect" && result.Phase != "sync_status" && result.Phase != "mark_failed" && result.Phase != "mark_warning" && result.Phase != "mark_high_skew" && result.Phase != "mark_low_element_quality" && result.Phase != "warning_refine_preview" && result.Phase != "publish_names" && result.Phase != "rename_auxiliary" {
-				a.qualityStale = true
-			}
-		}
-		a.mu.Unlock()
+		}()
 		call(post, a.window, WM_APPDONE, 0, 0)
 	}()
 }
@@ -2260,6 +2294,7 @@ func (a *state) beginInitialization() {
 	a.mu.Unlock()
 	a.message("正在校验 AutoMesh 内部脚本；此时不会连接或更改 ANSYS")
 	go func() {
+		defer backgroundGuard()
 		err := a.ws.InitializeScriptsAndRecord()
 		a.mu.Lock()
 		if err != nil {
@@ -2319,6 +2354,7 @@ func (a *state) connect(automatic bool) {
 	a.activePhase = "connect"
 	a.postProgress("I|查找已有 Workbench 服务|优先验证上次端口；失败后扫描本机可用端口")
 	go func() {
+		defer backgroundGuard()
 		var finalErr error
 		verified := false
 		seenWorkbenchServer := false
@@ -2684,7 +2720,7 @@ func (a *state) finish(connecting bool) {
 			} else {
 				a.progress = "已生成警告区局部细化方案 · 仅只读分析"
 			}
-			a.message(fmt.Sprintf("共有 %s 个警告单元，建议 %s 个局部球形控制，尚有 %s 个未覆盖；请在报告中检查，并决定是否发布。", printable(a.report()["warning_count"]), printable(a.report()["group_count"]), printable(a.report()["uncovered_count"])))
+			a.message(fmt.Sprintf("已分 %s 批核查 %s 个异常单元，建议 %s 个局部球形控制，尚有 %s 个未覆盖；请在报告中检查，并决定是否发布。", printable(a.report()["analysis_batch_count"]), printable(a.report()["warning_count"]), printable(a.report()["group_count"]), printable(a.report()["uncovered_count"])))
 			a.switchPage(3)
 			return
 		case "warning_refine_publish":
@@ -3448,6 +3484,9 @@ func isActionID(id int) bool {
 		(id >= ID_SYNC_STATUS && id <= ID_MARK_EXECUTE) || id == ID_STORAGE_CHANGE || id == ID_TASK_DRAWER_LOG
 }
 func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
+	if lifecycleMessage(hwnd, msg, w, l) {
+		return 0
+	}
 	switch msg {
 	case WM_ERASEBKGND:
 		return 1
@@ -3677,11 +3716,15 @@ func wndproc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		ui.finishStorage()
 		return 0
 	case WM_DESTROY:
+		if trayPresent {
+			setTray(hwnd, false)
+		}
+		lifecycleEvent("window_destroy", nil)
 		disposeBuffer()
 		releaseGDI()
 		// Save a short local performance diagnostic after closing; no UI-thread disk I/O during painting.
 		perf := map[string]any{"paint_count": uiRepaints, "paint_max_ms": float64(paintDurationMax.Microseconds()) / 1000,
-			"back_buffer_allocations": backBitmapAllocations, "control_moves": layoutMoves, "version": "R8.1-Release-Candidate",
+			"back_buffer_allocations": backBitmapAllocations, "control_moves": layoutMoves, "version": "R8.1.2-Release-Candidate",
 			"first_paint_ms": firstPaintMs, "nav_switch_max_ms": float64(navigationDurationMax.Microseconds()) / 1000,
 			"layout_max_ms": float64(layoutDurationMax.Microseconds()) / 1000}
 		_ = writeJSON(ui.ws.path("ui_performance.json"), perf)
@@ -3705,7 +3748,9 @@ func main() {
 	}
 	defer call(closeHandle, oneInstance)
 	if mutexErr == syscall.Errno(183) {
-		alert("AutoMesh 已在运行。请使用现有窗口，避免多个实例争用 Workbench 任务文件。")
+		if !restoreExistingInstance() {
+			alert("AutoMesh 已在运行，但未能找到可恢复的主窗口。请检查现有进程与错误日志，未启动第二个实例。")
+		}
 		return
 	}
 	ws, wsErr := DefaultWorkspace()
@@ -3714,18 +3759,20 @@ func main() {
 		return
 	}
 	ui.ws = ws
+	defer installCrashLog()()
 	ui.instance = call(module, 0)
 	name := ptr("AutoMesh2024R2Modern")
 	appIcon := call(loadicon, ui.instance, 1) // RT_GROUP_ICON 1 embedded in PE resource
 	if appIcon == 0 {
 		appIcon = call(loadicon, 0, 32512)
 	}
+	trayIcon = appIcon
 	c := wndClass{Size: uint32(unsafe.Sizeof(wndClass{})), Proc: syscall.NewCallback(wndproc), Instance: ui.instance, Icon: appIcon, Cursor: call(loadcursor, 0, 32512), Name: name, SmallIcon: appIcon}
 	if call(register, uintptr(unsafe.Pointer(&c))) == 0 {
 		alert("无法注册 Windows 主窗口")
 		return
 	}
-	ui.window = call(create, 0, name, ptr("AutoMesh R8.1  |  六页面网格优化 · 发布候选版"), WS_OVERLAPPEDWINDOW|WS_VSCROLL|WS_HSCROLL, 70, 25, 1240, 730, 0, 0, ui.instance, 0)
+	ui.window = call(create, 0, name, ptr("AutoMesh R8.1.2  |  六页面网格优化 · 发布候选版"), WS_OVERLAPPEDWINDOW|WS_VSCROLL|WS_HSCROLL, 70, 25, 1240, 730, 0, 0, ui.instance, 0)
 	if ui.window == 0 {
 		alert("无法创建 Windows 主窗口")
 		return

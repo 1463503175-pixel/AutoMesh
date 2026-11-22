@@ -127,8 +127,8 @@ def write(path, data):
 
 
 def read(path):
-    with open(path, 'r') as h:
-        return json.load(h)
+    with open(path, 'rb') as h:
+        return json.loads(h.read().decode('utf-8-sig'))
 
 
 def meshing_process_identity():
@@ -145,6 +145,17 @@ def meshing_process_identity():
     except Exception:
         return {}
 
+
+
+def script_event(event,detail=None):
+    # Diagnostic failure must not interrupt a valid ACT task.
+    try:
+        payload=dict(event=event,time=time.time(),job_id=job.get('job_id'),
+            phase=job.get('phase'),session=meshing_process_identity(),detail=detail)
+        line=json.dumps(payload,ensure_ascii=True,sort_keys=True)+'\n'
+        with open(os.path.join(os.path.dirname(JOB_FILE),'script_events.jsonl'),'ab') as stream:
+            stream.write(line.encode('utf-8'))
+    except Exception: pass
 
 def emit_progress(percent, stage, detail):
     """Best-effort per-job heartbeat. Percent is only for measurable stages.
@@ -207,8 +218,9 @@ def resolve_current_model(model, extapi):
         project_model=extapi.DataModel.Project.Model
     except Exception:
         pass
-    if project_model is not None and project_model is not model:
-        candidates.append(('ExtAPI current project Model',project_model))
+    if (project_model is not None and project_model is not model
+            and hasattr(project_model,'Mesh') and hasattr(project_model,'NamedSelections')):
+        candidates=[('ExtAPI current project Model',project_model)]
     reports=[]
     for label,candidate in candidates:
         if candidate is None:
@@ -726,9 +738,34 @@ def mark_official_quality_elements(kind='failed'):
         try: return (utext(x.Name),int(x.ObjectId))
         except Exception: return (utext(x.Name),id(x))
     before=set(selection_key(x) for x in Model.NamedSelections.Children)
-    m.CreateMQVolumeElementsNamedSelection(metric,1 if kind=='failed' else 0)
+    creation_error=None
+    try:
+        m.CreateMQVolumeElementsNamedSelection(metric,1 if kind=='failed' else 0)
+    except Exception as exc:
+        creation_error=exc
     after=set(selection_key(x) for x in Model.NamedSelections.Children)
     created=sorted(after-before)
+    isolation_errors=[]
+    for sel in list(Model.NamedSelections.Children):
+        if selection_key(sel) not in created: continue
+        try:
+            sel.SendToSolver=False
+            if bool(sel.SendToSolver): raise RuntimeError('SendToSolver readback failed')
+        except Exception as exc:
+            # These objects were created in this call and have not left the transaction.
+            try:
+                key=selection_key(sel)
+                if utext(sel.Name).strip().lower() in ('inlet','outlet','wall','fluid'):
+                    raise RuntimeError('Physical region name is protected')
+                sel.Delete()
+                if any(selection_key(x)==key for x in Model.NamedSelections.Children):
+                    raise RuntimeError('Deletion readback failed')
+            except Exception as cleanup_error:
+                isolation_errors.append(utext(sel.Name)+': '+utext(cleanup_error))
+            isolation_errors.append(utext(exc))
+    if isolation_errors:
+        raise RuntimeError('Quality marker isolation failed; inspect remaining new groups: '+'; '.join(isolation_errors))
+    if creation_error is not None: raise creation_error
     sample_ids=[];sample_centroids=[]
     data=None
     try:
@@ -838,6 +875,11 @@ def mark_threshold_quality_elements(low=0.90,high=1.00,metric_name='Skewness'):
     target=Model.AddNamedSelection()
     try:
         target.Name=name
+        if utext(target.Name) != utext(name):
+            raise RuntimeError("Quality marker name readback mismatch")
+        target.SendToSolver=False
+        if bool(target.SendToSolver):
+            raise RuntimeError("Cannot isolate quality marker from solver zones")
         target.ScopingMethod=sheet
         criteria=target.GenerationCriteria
         criteria.Add(None)
@@ -2852,9 +2894,13 @@ def generate_reviewed(job, state):
     known=set(x['sizing'] for x in manifest['prepared'])
     qr_allowed={}
     if qr_manifest is not None:
-        qr_allowed=dict((x['name'],x) for x in qr_manifest.get('controls',[]))
-        if not qr_allowed or len(qr_allowed)!=len(qr_manifest.get('controls',[])):
-            raise RuntimeError('Warning hotspot manifest is missing or duplicated')
+        # Empty QR history is legitimate when only Named Selection Sizing was
+        # published. An empty stale ledger must not block reviewed remeshing.
+        # Live QR objects are still checked below and cannot be bypassed.
+        recorded_qr=qr_manifest.get('controls',[])
+        qr_allowed=dict((x['name'],x) for x in recorded_qr)
+        if len(qr_allowed)!=len(recorded_qr):
+            raise RuntimeError('Duplicate quality-hotspot names in managed manifest; no mesh cleared')
     qr_controls=[];qr_proxy=0.0
     unchecked=[]
     for other in Model.Mesh.Children:
@@ -3001,6 +3047,7 @@ result = {'job_id': job.get('job_id'),
           'stage': 'Meshing ACT command accepted',
           'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')}
 write(RESULT_FILE, result)
+script_event('script_start')
 emit_progress(3,'已进入 Meshing','ACT 命令被当前会话接受，开始核验几何与工程')
 try:
     cancellation_checkpoint()
@@ -3030,6 +3077,10 @@ try:
         state=read_only_verified_snapshot(job)
     else:
         state=verify_previous_snapshot(job)
+    try:
+        script_event('model_verified',dict(project=state.get('project'),fingerprint=state.get('fingerprint'),mesh_signature=mesh_state_signature(state)))
+    except Exception as mapping_error:
+        script_event('model_mapping_unavailable',utext(mapping_error))
     cancellation_checkpoint()
     if phase in ('inspect','auto_onepass'):
         write(SNAPSHOT_FILE, state)
@@ -3151,11 +3202,15 @@ try:
         elif phase == 'quality':
             result['summary'] = assess_quality()
         elif phase == 'mark_failed':
+            quality_marker_prepare(state)
             result['summary']=mark_official_quality_elements('failed')
+            quality_marker_register(result['summary'],state)
         elif phase == 'mark_warning':
+            quality_marker_prepare(state)
             result['summary']=mark_official_quality_elements('warning')
             warning_register_marker(result['summary'],state)
         elif phase == 'mark_high_skew':
+            quality_marker_prepare(state)
             emit_progress(69,'定位指定偏度范围','在当前网格 Named Selection Worksheet 按双端 Skewness 条件筛选，原质量阈值保持不变')
             cancellation_checkpoint()
             # Retire the active marker first. Old selection objects may remain
@@ -3168,6 +3223,7 @@ try:
             result['summary']=mark_threshold_skew_elements(job.get('skew_min',0.90),job.get('skew_max',1.00))
             warning_register_marker(result['summary'],state)
         elif phase == 'mark_low_element_quality':
+            quality_marker_prepare(state)
             emit_progress(69,'定位低 Element Quality 单元','按原生 ACT Mesh Element → ElementQuality 指标筛选，非质量代理')
             cancellation_checkpoint()
             write(_warning_path(_WARNING_MARKER), {'status':'pending',
@@ -3240,6 +3296,7 @@ except Exception:
     result['completed_at_unix'] = time.time()
     result['error'] = traceback.format_exc()
     emit_progress(None,'任务失败',utext(result['error']).splitlines()[-1][:180])
+script_event('script_end',dict(status=result.get('status'),error=result.get('error'),created_groups=(result.get('summary') or {}).get('created_groups',[])))
 # Attach the Mesh system chosen by the AutoMesh UI to this job's immutable receipt.
 # This is metadata only; the worker never switches or launches a Mesh system.
 _mesh_system_name = utext(job.get('mesh_system', '')).strip()

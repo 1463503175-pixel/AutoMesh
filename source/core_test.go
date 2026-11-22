@@ -47,6 +47,19 @@ func TestEmbeddedRunner(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+func TestRunnerDoesNotAssignHostGlobals(t *testing.T) {
+	w := Workspace{Dir: t.TempDir()}
+	if err := w.WriteRunner(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(w.path("Run_In_Existing_Meshing.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "JOB_FILE =") || !strings.Contains(string(b), "dict(globals(),") {
+		t.Fatal("runner leaks host globals")
+	}
+}
 func TestDuplicatedFace(t *testing.T) {
 	s := Snapshot{Project: "p", Fingerprint: "f", Faces: []Face{{ID: 1}}, Named: []Named{{Name: "inlet", IDs: []int{1}}, {Name: "hole", IDs: []int{1}}}}
 	p, e := Propose(s, 12, false)

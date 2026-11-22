@@ -613,6 +613,7 @@ func writeAtomic(filename string, b []byte) error {
 // Only replace embedded generated worker files from verified AutoMesh releases.
 // Unknown or user-edited scripts must be examined rather than silently lost.
 var knownLegacyWorkerHashes = map[string]bool{
+	"278cee13ed26a5d2892c119774ef9b4b97e8bdfe5249d3efa771b2326c0a75ec": true, // exact pre-fix R8.1 mainline
 	"b3ae587045e191ea2eeb45a20b02434c2e146497b1a4f8c84a81adfc6db5dc9b": true, // verified R8.1 RC 2026-11-08 / 2026-11-09 worker
 	"db33a9c1641a741249010435515937a6828734eede6c7622eb9e7c967f3e4ac1": true, // verified R8.1 RC EQ worker
 	"c35a1f010ecdcf26b1b343355a8f8769e84b9afff1dfa916d42be08cb5a4ecb2": true, // exact stage 2E verified worker, safe upgrade to opt-in quality distribution
@@ -645,6 +646,7 @@ var knownLegacyWorkerHashes = map[string]bool{
 // Everything else stays protected, including user-modified connection scripts.
 var knownLegacyAssetHashes = map[string]map[string]bool{
 	"start_wb_server_uia.ps1": {
+		"e907731a6a7efac8aacf428125076e0ae9460c6bfa999df309d0c6d61fe83463": true, // exact pre-R8.1.2 bootstrap helper
 		"2938671afa2a15cb901db55b0c4b0f8e848d6ffb7346e4a720b8ad6a50871d30": true, // verified official R7.2/R7.3 source
 	},
 	// Current R7.1 assets must be eligible for one atomic in-place upgrade.
@@ -659,6 +661,8 @@ var knownLegacyAssetHashes = map[string]map[string]bool{
 		"5f39429a1afb9267e5870cbe87dd73c5048ea1d3d4081c4bafb9b7707b9f5acc": true,
 	},
 	"warning_refinement.py": {
+		"887372f1b6b6df0cce63f7a164e57562a0ead498b0ed755125dc6c834a52d115": true, // exact pre-fix R8.1 mainline
+		"05d6de7f40390871dca9519a8fa186ff6f367e4084b8f0027a9b088dfd8cf80c": true, // verified 2026-11-10 warning hotspot manifest fix, safe batch-analysis upgrade
 		"2e2c6bff9553e78b2ac641c285e62c7c5bbf4230bcf835ab4c3996158ba6c86a": true, // verified R8.1 2026-11-08 RC module
 		"c123df29ed187691d5701d8c6d298c6d8f18ce7b09c1e6042a92822caa2641ea": true, // verified R8.1 EQ interval module
 		"8c8a393f8dbd30828c7007d544476b5cf5d16ac8a81a73f6d4a8216d08d0ec28": true, // verified R8.1 EQ budget module
@@ -821,11 +825,9 @@ func pyLiteral(p string) string {
 	return "u'" + p + "'"
 }
 func (w Workspace) WriteRunner() error {
-	txt := "# -*- coding: utf-8 -*-\n# Only in current open ANSYS Meshing scripting console.\n" +
-		"JOB_FILE = " + pyLiteral(w.path("job.json")) + "\n" +
-		"RESULT_FILE = " + pyLiteral(w.path("last_result.json")) + "\n" +
-		"SNAPSHOT_FILE = " + pyLiteral(w.path("snapshot.json")) + "\n" +
-		"execfile(" + pyLiteral(w.path("meshing_worker.py")) + ")\n"
+	txt := "# -*- coding: utf-8 -*-\n# Isolated per-command namespace; never retain ACT objects in the console.\n" +
+		"execfile(" + pyLiteral(w.path("meshing_worker.py")) + ", dict(globals(), JOB_FILE=" + pyLiteral(w.path("job.json")) +
+		", RESULT_FILE=" + pyLiteral(w.path("last_result.json")) + ", SNAPSHOT_FILE=" + pyLiteral(w.path("snapshot.json")) + "))\n"
 	out := w.path("Run_In_Existing_Meshing.py")
 	if previous, err := os.ReadFile(out); err == nil && string(previous) == txt {
 		return nil

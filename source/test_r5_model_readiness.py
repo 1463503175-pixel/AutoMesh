@@ -81,6 +81,16 @@ class ReadinessRegression(unittest.TestCase):
             snap=json.loads((pathlib.Path(t)/'snapshot.json').read_text('utf8'))
             self.assertEqual(len(snap['named']),2)
 
+    def test_stale_global_model_cannot_override_current_project(self):
+        with tempfile.TemporaryDirectory() as t:
+            stale=ModelType(); current=ModelType(); current.Mesh=None
+            api=API()
+            api.DataModel=type('DM',(),{'Project':type('P',(),{'ProjectDirectory':r'E:\ALD\model_files','Model':current})(),
+                                        'GeoData':API.DataModel.GeoData})()
+            r=self._run(t,stale,api)
+            self.assertEqual(r['status'],'error')
+            self.assertEqual(stale.Mesh.count,0)
+
     def test_missing_both_roots_must_not_modify_mesh_or_names(self):
         with tempfile.TemporaryDirectory() as t:
             m=ModelType();m.Mesh=None;m.NamedSelections=None

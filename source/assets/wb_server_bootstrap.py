@@ -137,6 +137,10 @@ def bootstrap(helper, invoke=invoke_uia, get_listeners=listeners, sleep=time.sle
         return {'status': 'unavailable', 'detail': outcome.get('detail', '启动失败'),
                 'candidate_ports': []}
     target = int(outcome.get('process_id') or 0)
+    reported = int(outcome.get('server_port') or 0)
+    if 1024 <= reported <= 65535:
+        return {'status':'submitted','detail':outcome.get('detail',''),
+                'candidate_ports':[reported],'process_id':target}
     candidates = set()
     # Some versions launch the server on another PID. The new listener diff is
     # only a hint; wb_cli list_systems must validate the actual Workbench.

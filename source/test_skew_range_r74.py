@@ -25,6 +25,7 @@ class CreatedSelection:
     def __init__(self, model):
         self.model = model
         self.Name = 'New'
+        self.SendToSolver = True
         self.ScopingMethod = None
         self.GenerationCriteria = Criteria()
         self.Location = NS(Ids=[], SelectionType='mesh-elements')
@@ -85,6 +86,11 @@ class SkewRangeTests(unittest.TestCase):
         self.assertEqual(len(model.created[0].GenerationCriteria), 1)
         self.assertEqual(result['selection_source'], 'named_selection_worksheet_skewness_range')
         self.assertTrue(model.created[0].Name.startswith('AutoMesh_Skew_900_1000'))
+
+    def test_quality_marker_never_exports_solver_zone(self):
+        model, result = exercise({1: .95})
+        self.assertEqual(result['status'], 'created')
+        self.assertFalse(model.created[0].SendToSolver)
 
     def test_two_bounds_are_an_intersection_not_warning_threshold(self):
         model, result = exercise({1: .88, 2: .90, 3: .92, 4: .97317, 5: .999}, .90, .95)

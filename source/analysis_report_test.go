@@ -84,7 +84,7 @@ func TestQualityAnalysisExportReadOnlyAndCollisionSafe(t *testing.T) {
 		t.Fatal(err)
 	}
 	if filepath.Dir(path) != ws.Dir {
-		t.Fatal("report escaped configured workspace")
+		t.Fatalf("report escaped configured workspace: path=%q workspace=%q", path, ws.Dir)
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil || !strings.Contains(string(contents), "网格质量分析报告") {

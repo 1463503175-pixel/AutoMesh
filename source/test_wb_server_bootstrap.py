@@ -52,6 +52,16 @@ class WorkbenchServerAutostartTests(unittest.TestCase):
         self.assertEqual(result['status'],'submitted')
         self.assertEqual(result['candidate_ports'],[38651])
 
+    def test_explicit_console_port_wins_when_listener_already_existed(self):
+        calls=[]
+        def invoke(_helper,mode='start'):
+            calls.append(mode)
+            return {'status':'submitted','process_id':91,'server_port':2211}
+        result=bootstrap('fake',invoke=invoke,get_listeners=lambda:{(2211,91)},
+                         sleep=lambda _:self.fail('known port must not wait for a new socket'),deadline=2)
+        self.assertEqual(result['candidate_ports'],[2211])
+        self.assertEqual(calls,['start'])
+
     def test_not_starting_new_workbench_or_screen_clicks(self):
         root=Path(__file__).with_name('assets')
         ps=(root/'start_wb_server_uia.ps1').read_text('utf-8')
