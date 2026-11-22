@@ -1,0 +1,35 @@
+name: Publish verified AutoMesh R8.1.2
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-r812.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: automesh-publish-r812
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify every recovered file and original package
+        run: sha256sum -c SHA256SUMS.txt
+      - name: Publish the verified original executable and full source ZIP
+        run: |
+          if gh release view R8.1.2 >/dev/null 2>&1; then
+            echo "Release R8.1.2 already exists; refusing to overwrite its assets."
+            exit 1
+          fi
+          gh release create R8.1.2 app/AutoMesh.exe AutoMesh_R8_1_BatchHotspot_20261110_Full.zip --target 5b15bc737f3711f0241d1e4352b7e7d878812572 --title "AutoMesh R8.1.2" --latest --notes-file source/发布说明/R8.1.2_自动开启Workbench服务与连接.md
+      - name: Remove temporary publish workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/publish-r812.yml
+          git commit -m "chore: finish R8.1.2 release publication"
+          git push origin HEAD:main
