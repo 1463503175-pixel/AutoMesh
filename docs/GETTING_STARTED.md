@@ -2,7 +2,7 @@
 
 ## 01 / 下载与启动
 
-下载 [Windows EXE](https://github.com/1463503175-pixel/AutoMesh/raw/main/app/AutoMesh.exe) 或 [完整源码包](https://github.com/1463503175-pixel/AutoMesh/raw/main/AutoMesh_R8_1_BatchHotspot_20261110_Full.zip)。程序为原生 Windows x64 应用，原包注明 ANSYS Workbench 2024 R2。
+下载 [Windows EXE](https://github.com/1463503175-pixel/AutoMesh/releases/download/R8.1.2/AutoMesh.exe) 或 [完整源码包](https://github.com/1463503175-pixel/AutoMesh/releases/download/R8.1.2/AutoMesh_R8_1_BatchHotspot_20261110_Full.zip)。程序为原生 Windows x64 应用，原包注明 ANSYS Workbench 2024 R2。
 
 先打开已有 Workbench 工程及需要的 Meshing 编辑器，再运行 AutoMesh。软件优先验证已有脚本服务；若未开启，且能唯一识别已有 Workbench，会尝试启动服务并核对实际系统。多个 Workbench 会话须消除歧义。不会新建 Workbench 进程或修改工程来完成连接。
 

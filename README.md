@@ -13,8 +13,8 @@
 <p>专为 ANSYS Meshing 打造的网格质量诊断与局部优化工作站。<br>
 连接已有工程，从真实质量数据出发，将网格缺陷转化为精准、可审核的优化决策。</p>
 
-<a href="https://github.com/1463503175-pixel/AutoMesh/raw/main/app/AutoMesh.exe"><img alt="Download for Windows" src="https://img.shields.io/badge/Download%20for%20Windows-0866D9?style=for-the-badge&amp;logo=windows&amp;logoColor=white"></a>
-<a href="https://github.com/1463503175-pixel/AutoMesh/raw/main/AutoMesh_R8_1_BatchHotspot_20261110_Full.zip"><img alt="Full source package" src="https://img.shields.io/badge/Full%20source%20package-24292F?style=for-the-badge"></a>
+<a href="https://github.com/1463503175-pixel/AutoMesh/releases/download/R8.1.2/AutoMesh.exe"><img alt="Download for Windows" src="https://img.shields.io/badge/Download%20for%20Windows-0866D9?style=for-the-badge&amp;logo=windows&amp;logoColor=white"></a>
+<a href="https://github.com/1463503175-pixel/AutoMesh/releases/download/R8.1.2/AutoMesh_R8_1_BatchHotspot_20261110_Full.zip"><img alt="Full source package" src="https://img.shields.io/badge/Full%20source%20package-24292F?style=for-the-badge"></a>
 
 <br>
 
@@ -86,7 +86,7 @@ AutoMesh 将质量采集、异常单元定位、局部尺寸控制和优化前�
 
 下载最新 Windows 程序，打开已有 ANSYS Workbench 工程及目标 Meshing 编辑器，再运行 AutoMesh。优先复用实际工程和既有服务。
 
-**[Download AutoMesh R8.1.2](https://github.com/1463503175-pixel/AutoMesh/raw/main/app/AutoMesh.exe)** &nbsp; · &nbsp; [完整源码包](https://github.com/1463503175-pixel/AutoMesh/raw/main/AutoMesh_R8_1_BatchHotspot_20261110_Full.zip) &nbsp; · &nbsp; [完整使用指南](docs/GETTING_STARTED.md)
+**[Download AutoMesh R8.1.2](https://github.com/1463503175-pixel/AutoMesh/releases/download/R8.1.2/AutoMesh.exe)** &nbsp; · &nbsp; [完整源码包](https://github.com/1463503175-pixel/AutoMesh/releases/download/R8.1.2/AutoMesh_R8_1_BatchHotspot_20261110_Full.zip) &nbsp; · &nbsp; [完整使用指南](docs/GETTING_STARTED.md)
 
 ## Explore the project
 
