@@ -1338,7 +1338,21 @@
     "git_blob": "pass",
     "windows_x64_pe": "pass",
     "python_ast_passed": 59,
-    "python_ast_errors": {}
+    "python_ast_errors": {},
+    "original_package_manifest": {
+      "status": "pass",
+      "entries": 178,
+      "mismatches": 0
+    }
   },
-  "scope": "Exact package recovery; no Windows/ANSYS executable run or simulation acceptance. Archive paths normalized only; generated caches and duplicate EXE omitted."
+  "scope": "Exact package recovery; no Windows/ANSYS executable run or simulation acceptance. Archive paths normalized only; generated caches and duplicate EXE omitted.",
+  "release": "R8.1.2 RC",
+  "original_release_evidence": {
+    "path": "source/发布说明/R8.1.2_自动开启Workbench服务与连接.md",
+    "date": "2026-11-13",
+    "python_passed": 275,
+    "go_passed": 223,
+    "go_skipped": 3,
+    "scope": "Original package record; not rerun during this sync."
+  }
 }
