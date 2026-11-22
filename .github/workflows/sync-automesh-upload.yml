@@ -1,0 +1,29 @@
+name: Recover uploaded AutoMesh package
+on:
+  push:
+    paths:
+      - '.github/workflows/sync-automesh-upload.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: automesh-package-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and recover pinned upload
+        run: |
+          cp .github/sync_automesh.py "$RUNNER_TEMP/sync_automesh.py"
+          python3 "$RUNNER_TEMP/sync_automesh.py"
+          sha256sum -c SHA256SUMS.txt
+      - name: Sync latest package without stale files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "release: recover latest AutoMesh R8.1 BatchHotspot package"
+          git push origin HEAD:main
